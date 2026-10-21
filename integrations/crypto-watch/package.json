@@ -1,0 +1,19 @@
+{
+  "name": "skeletonkey-crypto-watch",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "version": "0.1.0",
+  "description": "Local wallet watcher + MCP for SkeletonKey: BTC/LTC/ETH polling and a view-only XMR watcher.",
+  "scripts": {
+    "mcp": "node mcp-server.mjs",
+    "watch": "python3 crypto-watch"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "SEE LICENSE IN ../../LICENSE"
+}

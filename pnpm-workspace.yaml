@@ -1,0 +1,9 @@
+packages:
+  - "."
+allowBuilds:
+  '@firebase/util': false
+  esbuild: true
+  optipng-bin: false
+  protobufjs: false
+  sharp: true
+  zopflipng-bin: false

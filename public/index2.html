@@ -1,0 +1,459 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Tauri Detection Deep Debug</title>
+        <style>
+            body {
+                font-family: monospace;
+                background: #1a1a1a;
+                color: #fff;
+                margin: 20px;
+                font-size: 12px;
+            }
+            .log-entry {
+                margin: 2px 0;
+                padding: 2px 5px;
+                border-left: 3px solid #333;
+            }
+            .log-entry.info {
+                border-left-color: #4caf50;
+            }
+            .log-entry.warn {
+                border-left-color: #ffa726;
+            }
+            .log-entry.error {
+                border-left-color: #f44336;
+            }
+            .log-entry.debug {
+                border-left-color: #2196f3;
+            }
+            .timestamp {
+                color: #666;
+                font-size: 10px;
+            }
+            .section {
+                border: 1px solid #333;
+                margin: 10px 0;
+                padding: 10px;
+                border-radius: 5px;
+            }
+            button {
+                background: #333;
+                border: 1px solid #555;
+                color: #ccc;
+                padding: 5px 10px;
+                margin: 5px;
+                cursor: pointer;
+                border-radius: 3px;
+            }
+            button:hover {
+                background: #444;
+            }
+            #live-monitor {
+                max-height: 300px;
+                overflow-y: auto;
+                border: 1px solid #333;
+                padding: 10px;
+                background: #0f0f0f;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>🔍 Deep Tauri Detection Debug</h1>
+
+        <div class="section">
+            <h3>Live Detection Monitor</h3>
+            <div id="live-monitor"></div>
+            <button onclick="clearMonitor()">Clear Monitor</button>
+            <button onclick="forceCheck()">Force Check Now</button>
+            <button onclick="pollGlobals()">Start Global Polling</button>
+        </div>
+
+        <div class="section">
+            <h3>Initial Environment Snapshot</h3>
+            <div id="initial-snapshot"></div>
+        </div>
+
+        <div class="section">
+            <h3>Hook Activity Monitor</h3>
+            <div id="hook-monitor"></div>
+        </div>
+
+        <div class="section">
+            <h3>Timing Analysis</h3>
+            <div id="timing-analysis"></div>
+        </div>
+
+        <script>
+            const startTime = performance.now();
+            const logs = [];
+
+            function log(type, message, data = null) {
+                const timestamp = performance.now() - startTime;
+                const entry = {
+                    type,
+                    message,
+                    data,
+                    timestamp: timestamp.toFixed(2) + "ms",
+                    realTime: new Date().toISOString(),
+                };
+                logs.push(entry);
+
+                const monitor = document.getElementById("live-monitor");
+                const div = document.createElement("div");
+                div.className = `log-entry ${type}`;
+                div.innerHTML = `
+                <span class="timestamp">[${entry.timestamp}]</span>
+                ${message}
+                ${data ? `<br><pre style="margin:2px 0;font-size:10px;">${JSON.stringify(data, null, 2)}</pre>` : ""}
+            `;
+                monitor.appendChild(div);
+                monitor.scrollTop = monitor.scrollHeight;
+            }
+
+            function clearMonitor() {
+                document.getElementById("live-monitor").innerHTML = "";
+            }
+
+            function forceCheck() {
+                log("debug", "FORCE CHECK TRIGGERED");
+                checkTauriState("force-check");
+            }
+
+            function checkTauriState(source) {
+                const state = {
+                    source,
+                    timestamp: performance.now() - startTime,
+                    windowGlobals: {
+                        __TAURI__: typeof window.__TAURI__,
+                        __TAURI_INTERNALS__: typeof window.__TAURI_INTERNALS__,
+                        __TAURI_IPC__: typeof window.__TAURI_IPC__,
+                        __TAURI_METADATA__: typeof window.__TAURI_METADATA__,
+                        __TAURI_PROCESS__: typeof window.__TAURI_PROCESS__,
+                        isTauri: typeof window.isTauri,
+                    },
+                    location: {
+                        href: window.location.href,
+                        protocol: window.location.protocol,
+                        hostname: window.location.hostname,
+                        port: window.location.port,
+                    },
+                    userAgent: navigator.userAgent,
+                    documentReadyState: document.readyState,
+                    windowLoaded: document.readyState === "complete",
+                };
+
+                // Check if any detection functions exist
+                if (typeof window.isTauriEnvironmentSimple === "function") {
+                    try {
+                        state.detectionFunctions = {
+                            isTauriEnvironmentSimple:
+                                window.isTauriEnvironmentSimple(),
+                        };
+                    } catch (e) {
+                        state.detectionFunctionError = e.message;
+                    }
+                }
+
+                log("info", `Tauri state check (${source})`, state);
+                return state;
+            }
+
+            function pollGlobals() {
+                log(
+                    "debug",
+                    "Starting global polling every 100ms for 10 seconds...",
+                );
+                let count = 0;
+                const maxCount = 100; // 10 seconds
+
+                const interval = setInterval(() => {
+                    count++;
+                    const hasGlobals = !!(
+                        window.__TAURI__ || window.__TAURI_INTERNALS__
+                    );
+
+                    if (hasGlobals) {
+                        log("info", `GLOBALS APPEARED after ${count * 100}ms!`);
+                        clearInterval(interval);
+                        checkTauriState(`globals-appeared-${count * 100}ms`);
+                    } else if (count >= maxCount) {
+                        log(
+                            "warn",
+                            "Global polling timeout - no globals found in 10 seconds",
+                        );
+                        clearInterval(interval);
+                    }
+                }, 100);
+            }
+
+            // Initial snapshot
+            function takeInitialSnapshot() {
+                const snapshot = {
+                    timestamp: "0ms (page load)",
+                    windowKeys: Object.keys(window).filter(
+                        (k) => k.includes("TAURI") || k.includes("tauri"),
+                    ),
+                    allGlobals: Object.keys(window).slice(0, 50), // First 50 for brevity
+                    documentState: document.readyState,
+                    location: window.location.href,
+                    userAgent: navigator.userAgent,
+                    performanceNow: performance.now(),
+                    dateNow: Date.now(),
+                };
+
+                document.getElementById("initial-snapshot").innerHTML =
+                    `<pre>${JSON.stringify(snapshot, null, 2)}</pre>`;
+
+                log("info", "Initial page snapshot taken", snapshot);
+            }
+
+            // Hook into React/app lifecycle if possible
+            function monitorReactActivity() {
+                // Try to detect React DevTools or React itself
+                if (window.React || window.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
+                    log("info", "React detected, monitoring for updates...");
+
+                    // Hook into React DevTools if available
+                    if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
+                        const hook = window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+                        const originalOnCommitFiberRoot =
+                            hook.onCommitFiberRoot;
+
+                        hook.onCommitFiberRoot = function (id, root, ...args) {
+                            log("debug", "React commit detected", {
+                                id,
+                                timestamp: performance.now() - startTime,
+                            });
+                            checkTauriState("react-commit");
+                            return originalOnCommitFiberRoot.call(
+                                this,
+                                id,
+                                root,
+                                ...args,
+                            );
+                        };
+                    }
+                }
+            }
+
+            // Monitor for dynamic script loading
+            function monitorScriptLoading() {
+                const observer = new MutationObserver((mutations) => {
+                    mutations.forEach((mutation) => {
+                        mutation.addedNodes.forEach((node) => {
+                            if (node.nodeType === Node.ELEMENT_NODE) {
+                                if (node.tagName === "SCRIPT") {
+                                    log("debug", "Script element added", {
+                                        src: node.src,
+                                        innerHTML: node.innerHTML.substring(
+                                            0,
+                                            100,
+                                        ),
+                                    });
+                                }
+
+                                // Check for any new global variables
+                                setTimeout(() => {
+                                    const newGlobals = Object.keys(
+                                        window,
+                                    ).filter(
+                                        (k) =>
+                                            k.includes("TAURI") ||
+                                            k.includes("tauri"),
+                                    );
+                                    if (newGlobals.length > 0) {
+                                        log(
+                                            "info",
+                                            "New Tauri-related globals detected!",
+                                            newGlobals,
+                                        );
+                                        checkTauriState("new-globals-detected");
+                                    }
+                                }, 50);
+                            }
+                        });
+                    });
+                });
+
+                observer.observe(document.head, {
+                    childList: true,
+                    subtree: true,
+                });
+                observer.observe(document.body, {
+                    childList: true,
+                    subtree: true,
+                });
+
+                log("debug", "Script loading monitor activated");
+            }
+
+            // Monitor fetch/network activity
+            function monitorNetworkActivity() {
+                const originalFetch = window.fetch;
+                window.fetch = function (...args) {
+                    const url = args[0];
+                    log("debug", "Fetch request", {
+                        url: url.toString().substring(0, 100),
+                    });
+                    return originalFetch.apply(this, args);
+                };
+
+                log("debug", "Network monitoring activated");
+            }
+
+            // Monitor localStorage/storage changes
+            function monitorStorageChanges() {
+                const originalSetItem = localStorage.setItem;
+                localStorage.setItem = function (key, value) {
+                    if (key.includes("tauri") || key.includes("Tauri")) {
+                        log("debug", "Tauri-related localStorage change", {
+                            key,
+                            value: value.substring(0, 100),
+                        });
+                    }
+                    return originalSetItem.call(this, key, value);
+                };
+
+                log("debug", "Storage monitoring activated");
+            }
+
+            // Check for 5-second pattern
+            function analyzeTimingPattern() {
+                const timingDiv = document.getElementById("timing-analysis");
+
+                // Mark specific intervals
+                [
+                    1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000,
+                ].forEach((ms) => {
+                    setTimeout(() => {
+                        log(
+                            "debug",
+                            `${ms / 1000}s mark - checking for changes`,
+                        );
+                        checkTauriState(`${ms / 1000}s-mark`);
+
+                        if (ms === 5000) {
+                            log(
+                                "warn",
+                                "🎯 5 SECOND MARK - This is when your issue happens!",
+                            );
+                            // Extra detailed check at 5s
+                            setTimeout(() => {
+                                checkTauriState("5s-plus-100ms");
+                            }, 100);
+                            setTimeout(() => {
+                                checkTauriState("5s-plus-500ms");
+                            }, 500);
+                        }
+                    }, ms);
+                });
+            }
+
+            // Hook into console to catch any library logs
+            function monitorConsole() {
+                const originalLog = console.log;
+                const originalWarn = console.warn;
+                const originalError = console.error;
+
+                console.log = function (...args) {
+                    const message = args.join(" ");
+                    if (
+                        message.includes("Tauri") ||
+                        message.includes("tauri") ||
+                        message.includes("detection")
+                    ) {
+                        log("info", "Console log captured", {
+                            message: message.substring(0, 200),
+                        });
+                    }
+                    return originalLog.apply(this, args);
+                };
+
+                console.warn = function (...args) {
+                    const message = args.join(" ");
+                    if (
+                        message.includes("Tauri") ||
+                        message.includes("tauri") ||
+                        message.includes("detection")
+                    ) {
+                        log("warn", "Console warn captured", {
+                            message: message.substring(0, 200),
+                        });
+                    }
+                    return originalWarn.apply(this, args);
+                };
+
+                console.error = function (...args) {
+                    const message = args.join(" ");
+                    if (
+                        message.includes("Tauri") ||
+                        message.includes("tauri") ||
+                        message.includes("detection")
+                    ) {
+                        log("error", "Console error captured", {
+                            message: message.substring(0, 200),
+                        });
+                    }
+                    return originalError.apply(this, args);
+                };
+
+                log("debug", "Console monitoring activated");
+            }
+
+            // Start all monitoring
+            function initializeDeepDebug() {
+                log("info", "🚀 Deep debug monitoring started");
+
+                takeInitialSnapshot();
+                checkTauriState("initial");
+
+                monitorReactActivity();
+                monitorScriptLoading();
+                monitorNetworkActivity();
+                monitorStorageChanges();
+                monitorConsole();
+                analyzeTimingPattern();
+
+                // Regular checks
+                setInterval(() => {
+                    checkTauriState("periodic-500ms");
+                }, 500);
+
+                log(
+                    "info",
+                    "All monitors activated - waiting for the 5-second mystery...",
+                );
+            }
+
+            // Start when DOM is ready
+            if (document.readyState === "loading") {
+                document.addEventListener(
+                    "DOMContentLoaded",
+                    initializeDeepDebug,
+                );
+            } else {
+                initializeDeepDebug();
+            }
+
+            // Export logs function for external access
+            window.getDebugLogs = () => logs;
+            window.exportLogs = () => {
+                const data = {
+                    userAgent: navigator.userAgent,
+                    location: window.location.href,
+                    logs: logs,
+                    finalState: checkTauriState("export"),
+                };
+                console.log("=== DEEP DEBUG EXPORT ===");
+                console.log(JSON.stringify(data, null, 2));
+                return data;
+            };
+
+            log(
+                "info",
+                "Debug tool ready! Use window.exportLogs() to export all data",
+            );
+        </script>
+    </body>
+</html>

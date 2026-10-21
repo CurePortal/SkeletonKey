@@ -1,0 +1,92 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": false,
+  "share": "disabled",
+  "mcp": {
+    "skeletonkey": {
+      "type": "local",
+      "command": [
+        "node",
+        "/ABS/PATH/TO/SkeletonKey/mcp/skeletonkey-mcp.mjs"
+      ],
+      "cwd": "/ABS/PATH/TO/SkeletonKey",
+      "enabled": true
+    },
+    "skeletonkey-hq": {
+      "type": "local",
+      "command": [
+        "node",
+        "/ABS/PATH/TO/SkeletonKey/mcp/hq-mcp.mjs"
+      ],
+      "cwd": "/ABS/PATH/TO/SkeletonKey",
+      "enabled": true,
+      "environment": {
+        "SK_BRIDGE_URL": "http://127.0.0.1:8788",
+        "SOUSVEILLANCE_DIR": "/ABS/PATH/TO/SkeletonKey/sousveillance/server"
+      }
+    },
+    "beacon": {
+      "type": "local",
+      "command": [
+        "node",
+        "/ABS/PATH/TO/SkeletonKey/sousveillance/server/mcp-server.mjs"
+      ],
+      "cwd": "/ABS/PATH/TO/SkeletonKey/sousveillance/server",
+      "enabled": true
+    },
+    "geo": {
+      "type": "local",
+      "command": [
+        "node",
+        "/ABS/PATH/TO/SkeletonKey/sousveillance/maps/geo-mcp.mjs"
+      ],
+      "cwd": "/ABS/PATH/TO/SkeletonKey/sousveillance/maps",
+      "enabled": true
+    },
+    "crypto": {
+      "type": "local",
+      "command": [
+        "node",
+        "/ABS/PATH/TO/SkeletonKey/integrations/crypto-watch/mcp-server.mjs"
+      ],
+      "cwd": "/ABS/PATH/TO/SkeletonKey/integrations/crypto-watch",
+      "enabled": true
+    }
+  },
+  "provider": {
+    "ollama-local": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (local)",
+      "options": {
+        "baseURL": "http://127.0.0.1:11434/v1",
+        "apiKey": "ollama",
+        "timeout": false
+      },
+      "models": {
+        "qwen3.6:35b-mlx": {
+          "name": "Qwen 3.6 35B (local)",
+          "limit": {
+            "context": 262144,
+            "output": 32768
+          }
+        },
+        "deepseek-v4.1-flash": {
+          "name": "DeepSeek 4.1 Flash (via your relay/provider)"
+        }
+      }
+    },
+    "ollama-cloud": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama Cloud",
+      "options": {
+        "baseURL": "https://ollama.com/v1",
+        "apiKey": "{env:OLLAMA_API_KEY}"
+      },
+      "models": {
+        "deepseek-v4.1-flash": {
+          "name": "DeepSeek 4.1 Flash"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "skeletonkey-whatsapp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WhatsApp Agent Platform <-> opencode bridge for SkeletonKey / HQ",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node wa-agent-bridge.mjs",
+    "test": "node wa-agent-bridge.mjs --test \"hello\""
+  }
+}

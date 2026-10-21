@@ -1,0 +1,195 @@
+#!/usr/bin/python3
+"""Poll BTC/LTC/ETH addresses and raise a desktop notification on new activity."""
+
+import json
+import os
+import subprocess
+import sys
+import urllib.request
+
+HOME = os.path.expanduser("~")
+XDG_CONFIG = os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config"))
+XDG_STATE = os.environ.get("XDG_STATE_HOME", os.path.join(HOME, ".local/state"))
+CONF = os.environ.get("CRYPTO_WATCH_CONFIG", os.path.join(XDG_CONFIG, "crypto-watch/config.json"))
+STATE_DIR = os.environ.get("CRYPTO_WATCH_STATE_DIR", os.path.join(XDG_STATE, "crypto-watch"))
+STATE = os.environ.get("CRYPTO_WATCH_STATE", os.path.join(STATE_DIR, "state.json"))
+HERE = os.path.dirname(os.path.abspath(__file__))
+_local_event = os.path.join(HERE, "crypto-event")
+EVENT = os.environ.get("CRYPTO_EVENT") or (
+    _local_event if os.path.exists(_local_event) else os.path.join(HOME, ".local/bin/crypto-event")
+)
+
+UTXO = [
+    ("BTC", "BTC", "https://mempool.space/api/address/{}/txs"),
+    ("LTC", "LTC", "https://litecoinspace.org/api/address/{}/txs"),
+]
+
+
+def load_json(path, default):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def save_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=1)
+    os.replace(tmp, path)
+
+
+def fetch(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "crypto-watch/1.0"})
+    with urllib.request.urlopen(req, timeout=25) as r:
+        return json.load(r)
+
+
+def emit(chain, direction, amount, txid, note=""):
+    cmd = [EVENT, "--chain", chain, "--direction", direction,
+           "--amount", str(amount), "--txid", txid]
+    if note:
+        cmd += ["--note", note]
+    try:
+        subprocess.run(cmd, check=False, timeout=30)
+    except Exception as exc:
+        print(f"{chain}: notify failed: {exc}", file=sys.stderr)
+
+
+def fmt(raw, decimals):
+    s = f"{int(raw) / 10 ** decimals:.{decimals}f}".rstrip("0").rstrip(".")
+    return s or "0"
+
+
+def check_utxo(chain, addr, api, state, errors):
+    txs = fetch(api.format(addr))
+    if not isinstance(txs, list):
+        errors.append(f"{chain}: unexpected response")
+        return
+
+    node = state.setdefault(chain, {})
+    seen = node.setdefault("seen", [])
+    seen_set = set(seen)
+    first = not node.get("seeded")
+    new = []
+    for tx in txs:
+        txid = tx.get("txid")
+        if not txid or txid in seen_set:
+            continue
+        if not first:
+            new.append(tx)
+        seen.append(txid)
+        seen_set.add(txid)
+    del seen[:-500]
+
+    if first:
+        node["seeded"] = True
+        print(f"{chain}: seeded {len(seen)} tx(s)", file=sys.stderr)
+        return
+
+    for tx in reversed(new):
+        recv = sum(int(o.get("value", 0)) for o in tx.get("vout", [])
+                   if o.get("scriptpubkey_address") == addr)
+        spent = sum(int((i.get("prevout") or {}).get("value", 0)) for i in tx.get("vin", [])
+                    if (i.get("prevout") or {}).get("scriptpubkey_address") == addr)
+        net = recv - spent
+        txid = tx.get("txid", "")
+        if net > 0:
+            emit(chain, "in", fmt(net, 8), txid)
+        elif net < 0:
+            emit(chain, "out", fmt(-net, 8), txid)
+
+
+def eth_rpc(method, params):
+    payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+    last = None
+    for url in ("https://ethereum.publicnode.com", "https://eth.llamarpc.com"):
+        try:
+            req = urllib.request.Request(url, data=payload,
+                                         headers={"Content-Type": "application/json",
+                                                  "User-Agent": "crypto-watch/1.0"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return json.load(r)["result"]
+        except Exception as exc:
+            last = exc
+    raise last
+
+
+def eth_txid(addr, direction):
+    """Best-effort tx lookup; Blockscout rate-limits, so failure is fine."""
+    try:
+        url = ("https://eth.blockscout.com/api?module=account&action=txlist"
+               f"&address={addr}&page=1&offset=10&sort=desc")
+        rows = fetch(url).get("result")
+        if not isinstance(rows, list):
+            return None
+        me = addr.lower()
+        for row in rows:
+            if direction == "in" and (row.get("to") or "").lower() == me:
+                return row
+            if direction == "out" and (row.get("from") or "").lower() == me:
+                return row
+    except Exception:
+        pass
+    return None
+
+
+def check_eth(addr, state, errors):
+    # Balance polling over a public JSON-RPC node: cheap, no API key, no 429s.
+    balance = int(eth_rpc("eth_getBalance", [addr, "latest"]), 16)
+    node = state.setdefault("ETH", {})
+    prev = node.get("balance")
+    node["balance"] = balance
+    if prev is None:
+        print("ETH: seeded balance", file=sys.stderr)
+        return
+    if balance == prev:
+        return
+    delta = balance - prev
+    direction = "in" if delta > 0 else "out"
+    row = eth_txid(addr, direction)
+    txid = (row or {}).get("hash") or ""
+    if row and row.get("value"):
+        amount = fmt(int(row["value"]), 18)
+        note = ""
+    else:
+        amount = fmt(abs(delta), 18)
+        note = "balance change"
+    emit("ETH", direction, amount, txid, note)
+
+
+def main():
+    if "--test" in sys.argv:
+        subprocess.run([EVENT, "--test"], check=False)
+        return 0
+
+    conf = load_json(CONF, {})
+    state = load_json(STATE, {})
+    errors = []
+
+    for chain, _symbol, api in UTXO:
+        addr = conf.get(chain.lower())
+        if not addr:
+            continue
+        try:
+            check_utxo(chain, addr, api, state, errors)
+        except Exception as exc:  # network/API hiccup: keep other chains going
+            errors.append(f"{chain}: {exc}")
+
+    eth_addr = conf.get("eth")
+    if eth_addr:
+        try:
+            check_eth(eth_addr, state, errors)
+        except Exception as exc:
+            errors.append(f"ETH: {exc}")
+
+    save_json(STATE, state)
+    for err in errors:
+        print(err, file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

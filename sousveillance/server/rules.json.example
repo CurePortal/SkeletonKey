@@ -1,0 +1,20 @@
+{
+  "geofences": [
+    {
+      "name": "Home",
+      "lat": 37.7749,
+      "lon": -122.4194,
+      "radius": 200,
+      "onEnter": "You're home.",
+      "onExit": "You've left home."
+    },
+    {
+      "name": "Trailhead",
+      "lat": 37.8199,
+      "lon": -122.4783,
+      "radius": 300,
+      "onEnter": "You've reached the trailhead. Have water.",
+      "onExit": "You're past the trailhead."
+    }
+  ]
+}

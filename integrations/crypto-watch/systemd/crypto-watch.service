@@ -1,0 +1,7 @@
+[Unit]
+Description=SkeletonKey crypto-watch: poll BTC/LTC/ETH addresses for new transactions
+
+[Service]
+Type=oneshot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 %h/SkeletonKey/integrations/crypto-watch/crypto-watch

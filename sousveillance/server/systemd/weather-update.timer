@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh local weather every ~30 min (jittered)
+
+[Timer]
+OnCalendar=*:0/30
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

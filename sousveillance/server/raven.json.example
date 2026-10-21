@@ -1,0 +1,32 @@
+{
+  "pollMs": 45000,
+  "lostMin": 20,
+  "escalateMin": 60,
+  "reconnectMin": 2,
+  "stallMin": 0,
+  "stallRadiusM": 150,
+  "speedMaxMps": 40,
+  "altRateMaxMps": 5,
+  "quiet": [23, 7],
+  "llm": true,
+  "cooldownMin": 30,
+  "geofences": [
+    {
+      "name": "Home",
+      "lat": 37.7749,
+      "lon": -122.4194,
+      "radius": 200,
+      "onEnter": "You're home.",
+      "onExit": "You've left home."
+    }
+  ],
+  "dangerZones": [
+    {
+      "name": "Example hazard",
+      "lat": 36.5,
+      "lon": -118.9,
+      "radius": 800
+    }
+  ],
+  "emergencyRepeatMin": 15
+}

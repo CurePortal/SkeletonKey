@@ -1,0 +1,52 @@
+# dependencies / build output
+node_modules/
+**/node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+**/target/
+**/build/
+**/.dart_tool/
+**/.gradle/
+**/.kotlin/
+**/.idea/
+**/*.iml
+**/.DS_Store
+sousveillance/app/android/local.properties
+sousveillance/app/.flutter-plugins-dependencies
+sousveillance/app/.flutter-plugins
+
+# secrets / local env
+.env
+.env.local
+.env.*.local
+**/.env
+!**/.env.example
+integrations/whatsapp/.wa-agent*.env
+integrations/crypto-watch/config.json
+integrations/crypto-watch/state/
+
+# runtime state
+sousveillance/server/raven.json
+sousveillance/server/rules.json
+state/
+**/state/
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.ark
+*.ark.json
+
+# local map data (large / machine-specific)
+sousveillance/maps/data/
+sousveillance/maps/valhalla_tiles/
+sousveillance/maps/valhalla_tiles.tar
+sousveillance/maps/overlay/overlay.sqlite*
+sousveillance/maps/overlay/.work*
+sousveillance/maps/overlay/*.log
+sousveillance/maps/overlay/*.pbf
+
+# python
+__pycache__/
+*.pyc

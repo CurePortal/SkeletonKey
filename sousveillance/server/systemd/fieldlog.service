@@ -1,0 +1,8 @@
+[Unit]
+Description=Field log: digest yesterday, compact old digests into narrative
+After=beacond.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/SkeletonKey/sousveillance/server
+ExecStart=/usr/bin/bash -c '/usr/bin/env node %h/SkeletonKey/sousveillance/server/fieldlog.mjs digest "$(date -d yesterday +%%F)"; /usr/bin/env node %h/SkeletonKey/sousveillance/server/fieldlog.mjs compact 90; /usr/bin/env node %h/SkeletonKey/sousveillance/server/fieldlog.mjs legend 365'

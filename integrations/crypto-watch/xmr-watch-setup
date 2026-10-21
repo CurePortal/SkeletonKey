@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Create a view-only Monero wallet from an existing wallet and enable the
+# XMR desktop notification service. Run this yourself; it prompts for the
+# password of the existing wallet and never prints keys.
+set -euo pipefail
+
+SRC="${1:-${XMR_WALLET:-$HOME/monero-watch}}"
+DEST_DIR="$HOME/.local/share/xmr-watch"
+CONF_DIR="$HOME/.config/xmr-watch"
+DEST="$DEST_DIR/watch"
+CLI="${MONERO_CLI:-}"
+if [[ -z "$CLI" ]]; then
+  CLI="$(command -v monero-wallet-cli 2>/dev/null || true)"
+fi
+if [[ -z "$CLI" ]]; then
+  CLI="$(ls -1 "$HOME"/.local/opt/monero-*/monero-wallet-cli 2>/dev/null | sort -V | tail -1 || true)"
+fi
+NODE="${XMR_NODE:-nodes.hashvault.pro:18081}"
+
+die() { echo "error: $*" >&2; exit 1; }
+
+[[ -n "$CLI" && -x "$CLI" ]] || die "monero-wallet-cli not found (set MONERO_CLI)"
+[[ -f "$SRC.keys" ]] || die "no wallet found at $SRC (missing $SRC.keys)"
+
+if [[ -f "$SRC.keys.lock" || -f "$SRC.lock" ]]; then
+  die "wallet looks open (lock file present). Exit monero-wallet-cli first."
+fi
+
+echo "Reading address, view key and restore height from: $SRC"
+read -r -s -p "Wallet password: " PW; echo
+
+TMPPW=$(mktemp)
+chmod 600 "$TMPPW"
+trap 'rm -f "$TMPPW"' EXIT
+printf '%s' "$PW" > "$TMPPW"
+
+# Separate invocations: the password prompt consumes the whole stdin buffer,
+# so commands sent after it get lost.
+OUT=$(printf 'address\nviewkey\n%s\n' "$PW" \
+  | "$CLI" --offline --wallet-file "$SRC" --password-file "$TMPPW" 2>&1 \
+  | sed 's/\x1b\[[0-9;]*[A-Za-z]//g') || true
+
+if grep -qi "invalid password\|failed to open wallet\|key file not found\|already opened" <<<"$OUT"; then
+  die "could not open wallet (wrong password, or it is in use)"
+fi
+
+ADDR=$(grep -oE '\b4[1-9A-HJ-NP-Za-km-z]{94}\b' <<<"$OUT" | head -1 || true)
+VKEY=$(grep -oE 'secret: [0-9a-fA-F]{64}' <<<"$OUT" | head -1 | awk '{print $2}' || true)
+
+HEIGHT=$(printf 'restore_height\nexit\n' \
+  | "$CLI" --offline --wallet-file "$SRC" --password-file "$TMPPW" 2>&1 \
+  | sed 's/\x1b\[[0-9;]*[A-Za-z]//g' | tr -d '\r' \
+  | grep -oE '[0-9]{4,9}' | tail -1 || true)
+
+[[ -n "$ADDR" ]] || die "could not read the primary address"
+[[ -n "$VKEY" ]] || die "could not read the view key"
+[[ -n "$HEIGHT" ]] || HEIGHT=0
+
+if (( HEIGHT < 1 )); then
+  TIP=$(curl -sS -m 10 -X POST "http://$NODE/json_rpc" \
+    -H 'Content-Type: application/json' \
+    -d '{"jsonrpc":"2.0","id":"0","method":"get_info"}' \
+    | jq -r '.result.height // empty' 2>/dev/null || true)
+  if [[ -n "$TIP" ]]; then
+    HEIGHT=$(( TIP - 720 ))
+    echo "Wallet had no restore height; starting 720 blocks before tip ($HEIGHT)."
+  fi
+fi
+
+echo "Address: ${ADDR:0:12}...  restore height: $HEIGHT"
+
+if systemctl --user is-active --quiet xmr-watch.service 2>/dev/null; then
+  systemctl --user stop xmr-watch.service
+fi
+
+mkdir -p "$DEST_DIR" "$CONF_DIR"
+rm -f "$DEST" "$DEST.keys"
+
+WATCHPW=$(openssl rand -hex 24)
+printf '%s' "$WATCHPW" > "$CONF_DIR/password"
+chmod 600 "$CONF_DIR/password"
+
+echo "Creating view-only wallet..."
+printf '%s\n%s\nN\n' "$ADDR" "$VKEY" \
+  | "$CLI" --offline --generate-from-view-key "$DEST" \
+      --restore-height "$HEIGHT" --password-file "$CONF_DIR/password" \
+  >/dev/null 2>&1 || true
+
+[[ -f "$DEST.keys" ]] || die "view-only wallet was not created"
+
+# Sanity check: the new wallet must report the same address.
+CHECK=$(printf 'address\nexit\n' \
+  | "$CLI" --offline --wallet-file "$DEST" --password-file "$CONF_DIR/password" 2>&1 \
+  | sed 's/\x1b\[[0-9;]*[A-Za-z]//g' || true)
+grep -qF "$ADDR" <<<"$CHECK" || die "view-only wallet address mismatch"
+
+chmod 600 "$DEST" "$DEST.keys" 2>/dev/null || true
+
+systemctl --user daemon-reload
+systemctl --user enable --now xmr-watch.service
+
+echo
+echo "Done. View-only wallet: $DEST"
+echo "Service: $(systemctl --user is-active xmr-watch.service)"
+echo "Check sync: curl -s -X POST http://127.0.0.1:18083/json_rpc \\"
+echo "  -d '{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"method\":\"get_height\"}'"

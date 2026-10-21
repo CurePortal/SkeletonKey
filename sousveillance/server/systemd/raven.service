@@ -1,0 +1,14 @@
+[Unit]
+Description=Raven Protocol — beacon watch (proactive HQ)
+After=beacond.service
+Requires=beacond.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/SkeletonKey/sousveillance/server
+ExecStart=/usr/bin/env node %h/SkeletonKey/sousveillance/server/raven.mjs
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

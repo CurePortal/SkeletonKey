@@ -1,0 +1,29 @@
+# secrets & state
+.env
+*.env
+server/.env
+state/
+
+# node
+node_modules/
+
+# data & generated artifacts
+*.db
+*.db-wal
+*.db-shm
+*.log
+maps/data/
+maps/valhalla_tiles/
+maps/valhalla_tiles.tar
+maps/overlay/overlay.sqlite*
+maps/overlay/.work*
+maps/elevation/
+
+# flutter / android
+build/
+app/build/
+.dart_tool/
+.gradle/
+app/android/.gradle/
+app/android/local.properties
+*.iml

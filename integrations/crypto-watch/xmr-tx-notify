@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Called by monero-wallet-rpc --tx-notify with the txid as $1.
+set -uo pipefail
+
+txid="${1:-}"
+[[ -n "$txid" ]] || exit 0
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+EVENT="${CRYPTO_EVENT:-$HERE/crypto-event}"
+[[ -x "$EVENT" ]] || EVENT="$HOME/.local/bin/crypto-event"
+
+rpc="${XMR_WATCH_RPC:-http://127.0.0.1:18083/json_rpc}"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/xmr-watch"
+seen_file="$state_dir/notified.txt"
+mkdir -p "$state_dir"
+
+# Already announced (pool -> confirmed fires twice).
+if [[ -f "$seen_file" ]] && grep -qxF "$txid" "$seen_file"; then
+  exit 0
+fi
+
+resp=$(curl -sS -m 10 -X POST "$rpc" -H 'Content-Type: application/json' \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"method\":\"get_transfer_by_txid\",\"params\":{\"txid\":\"$txid\"}}" 2>/dev/null || true)
+
+amount=$(printf '%s' "$resp" | jq -r '.result.transfer.amount // empty' 2>/dev/null)
+subaddr=$(printf '%s' "$resp" | jq -r '.result.transfer.subaddr_index.minor // 0' 2>/dev/null)
+tx_height=$(printf '%s' "$resp" | jq -r '.result.transfer.height // 0' 2>/dev/null)
+[[ -n "$subaddr" ]] || subaddr=0
+[[ -n "$tx_height" ]] || tx_height=0
+
+# Suppress the burst of historical txs during the wallet's first sync.
+chain_height=$(curl -sS -m 10 -X POST "$rpc" -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":"0","method":"get_height"}' 2>/dev/null \
+  | jq -r '.result.height // 0' 2>/dev/null || true)
+[[ -n "$chain_height" ]] || chain_height=0
+if (( tx_height > 0 && chain_height > 0 && chain_height - tx_height > 5 )); then
+  exit 0
+fi
+
+if [[ -n "$amount" ]]; then
+  human=$(awk -v a="$amount" 'BEGIN{printf "%.12f", a/1000000000000}' | sed 's/0*$//; s/\.$//')
+else
+  human="unknown"
+fi
+note=""
+[[ "$subaddr" != "0" ]] && note="subaddress $subaddr"
+
+args=("$EVENT" --chain XMR --direction in --amount "$human" --txid "$txid")
+[[ -n "$note" ]] && args+=(--note "$note")
+"${args[@]}" || true
+
+printf '%s\n' "$txid" >> "$seen_file"
+if (( $(wc -l < "$seen_file") > 500 )); then
+  tail -n 300 "$seen_file" > "$seen_file.tmp" && mv "$seen_file.tmp" "$seen_file"
+fi

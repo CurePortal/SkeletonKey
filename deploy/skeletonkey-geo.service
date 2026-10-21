@@ -1,0 +1,13 @@
+[Unit]
+Description=SkeletonKey local map/beacon/opencode bridge
+After=network.target
+[Service]
+Type=simple
+WorkingDirectory=%h/SkeletonKey
+ExecStart=/usr/bin/env node %h/SkeletonKey/tools/geo-http.mjs
+Environment=GEO_PORT=8788
+Environment=GAZETTEER_MODULE=%h/SkeletonKey/sousveillance/maps/overlay/gazetteer.mjs
+Environment=OVERLAY_DB=%h/maps/overlay/overlay.sqlite
+Restart=on-failure
+[Install]
+WantedBy=default.target

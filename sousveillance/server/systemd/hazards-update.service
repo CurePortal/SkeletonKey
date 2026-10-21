@@ -1,0 +1,8 @@
+[Unit]
+Description=Hazards: refresh cached seismic + wildfire hazards for the operative
+After=beacond.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/SkeletonKey/sousveillance/server
+ExecStart=/usr/bin/env node %h/SkeletonKey/sousveillance/server/hazards.mjs update

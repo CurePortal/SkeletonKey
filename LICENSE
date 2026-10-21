@@ -1,0 +1,134 @@
+SkeletonKey Source-Available, Copyleft-Style, Non-Commercial License
+Version 1.0 — 21 October 2026
+
+Copyright (c) 2026 SkeletonKey contributors. All rights reserved.
+
+This license governs the software, documentation, prompts, and other materials in
+this repository (the "Software"). By using, copying, modifying, or distributing
+the Software, you agree to these terms.
+
+This is a custom source-available license. It is not an OSI-approved open-source
+license, and it deliberately restricts commercial and corporate use.
+
+1. DEFINITIONS
+
+"Maintainer" means the copyright holders and maintainers of the upstream
+SkeletonKey repository at https://github.com/CurePortal/SkeletonKey, or their
+successors.
+
+"Personal Use" means use by an individual for that individual's own
+non-commercial purposes.
+
+"Non-Profit Use" means use by an organization that is recognized as non-profit in
+its jurisdiction, does not operate for private profit, and does not charge for
+the Software or a Derivative Work.
+
+"Commercial Use" means any use by or on behalf of a for-profit entity (including
+a corporation, LLC, partnership, or similar organization, and including internal
+use); any use in connection with a product or service for which payment is
+received; and any resale, paid hosting, paid distribution, or paid support of the
+Software or a Derivative Work.
+
+"Derivative Work" means any modification, fork, remix, translation, adaptation,
+or other work based on the Software.
+
+"Distribute" means to publish, share, host, make available, or otherwise convey
+the Software or a Derivative Work to any third party.
+
+2. GRANT
+
+Subject to this license, the Maintainer grants you a worldwide, royalty-free,
+non-exclusive license to:
+
+  (a) use, copy, and modify the Software for Personal Use or Non-Profit Use;
+
+  (b) distribute the Software and Derivative Works for Personal Use or
+      Non-Profit Use, provided you comply with sections 3 and 4.
+
+No other rights are granted, whether by implication, estoppel, or otherwise.
+
+3. ATTRIBUTION AND NOTICE
+
+If you distribute or host the Software or a Derivative Work, you must:
+
+  (a) keep this license and all copyright notices intact;
+
+  (b) give clear and prominent attribution to "SkeletonKey" and a link to the
+      upstream repository in the README or equivalent documentation;
+
+  (c) mark each modified file with a brief notice describing the changes and the
+      date of modification;
+
+  (d) within 30 days of first distributing or hosting a Derivative Work, notify
+      the Maintainer by opening an issue in the upstream repository titled
+      "Fork notice" (or by the contact method published there), including the
+      name, location or URL, and a short description of the Derivative Work; and
+
+  (e) not use the SkeletonKey name, logo, or other marks in a way that suggests
+      endorsement by the Maintainer.
+
+4. COPYLEFT / SHARE-ALIKE / SOURCE
+
+  (a) Any Derivative Work you distribute or host must be licensed under this same
+      license, without additional or different restrictions.
+
+  (b) If you distribute or host a Derivative Work, you must make the complete
+      corresponding source code available under this license at no charge.
+
+5. PROHIBITED USES
+
+  (a) Commercial Use is not permitted without a separate written commercial
+      license from the Maintainer.
+
+  (b) You may not sell, rent, sublicense, or charge for access to the Software or
+      a Derivative Work.
+
+  (c) You may not remove, obscure, or circumvent the license, attribution, or
+      notices.
+
+  (d) You may not use the Software to surveil another person without their
+      consent, or to build dossiers on private individuals. This clause reflects
+      the purpose of the project; where it conflicts with applicable law, the law
+      prevails.
+
+6. CONTRIBUTIONS
+
+By submitting a contribution, you represent that you have the right to submit it
+and agree that it is licensed to the Maintainer and to recipients under this
+license.
+
+7. TERMINATION
+
+This license terminates automatically if you breach it. If the Maintainer
+notifies you of a breach, you may cure it within 30 days of that notice. On
+termination you must stop all use and distribution of the Software and
+Derivative Works. Sections 3, 5, 8, and 9 survive termination.
+
+8. NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. THE ENTIRE RISK ARISING
+OUT OF THE USE OR PERFORMANCE OF THE SOFTWARE REMAINS WITH YOU.
+
+9. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE MAINTAINER AND CONTRIBUTORS WILL NOT
+BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES, OR FOR ANY LOSS OF DATA, PROFITS, OR GOODWILL, ARISING OUT OF OR RELATED
+TO THIS LICENSE OR THE SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+DAMAGES. THE MAINTAINER'S TOTAL LIABILITY WILL NOT EXCEED THE AMOUNT YOU PAID FOR
+THE SOFTWARE, IF ANY.
+
+10. COMMERCIAL LICENSING
+
+For Commercial Use, contact the Maintainer through the upstream repository.
+
+11. GENERAL
+
+If any provision of this license is held unenforceable, it will be modified only
+as much as necessary to make it enforceable, and the remaining provisions will
+stay in effect. This license is the entire agreement concerning the Software and
+supersedes any prior understanding on that subject.
+
+SPDX-License-Identifier: LicenseRef-SkeletonKey-NC-Copyleft-1.0

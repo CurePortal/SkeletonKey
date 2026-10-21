@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+#
+# geo -- talk to the local Valhalla engine (offline directions + geocoding)
+#
+# Data never leaves the machine; it queries the Valhalla service on
+# $VALHALLA_URL (default http://localhost:8002) which reads tiles under
+# ~/maps/valhalla_tiles.
+#
+# Commands:
+#   geo status                      health + version
+#   geo find "Eiffel Tower"         name/text -> coordinates
+#   geo reverse 48.8584 2.2945      coordinates -> address
+#   geo route "A" "B"               turn-by-turn directions
+#   geo route 52.52,13.40 52.51,13.42
+#   geo matrix "A" "B" "C"          travel time from A to B and C
+#   geo iso "A" --minutes 15        reachable area (GeoJSON)
+#   geo serve|stop|restart|logs     manage the systemd user service
+#
+# Options:
+#   --costing <auto|bicycle|pedestrian|truck|bus>   default: auto
+#   --json                            print raw JSON
+#   -h, --help
+#
+set -euo pipefail
+
+VALHALLA_URL="${VALHALLA_URL:-http://localhost:8002}"
+# Geocoding (name<->coords) is served by the local overlay gazetteer, since this
+# Valhalla build has no search/reverse actions.
+GAZETTEER="${GAZETTEER:-$(cd "$(dirname "$0")" && pwd)/overlay/gazetteer.mjs}"
+COSTING="auto"
+RAW=0
+
+die() { printf 'geo: %s\n' "$*" >&2; exit 1; }
+
+api() { # <endpoint> <json-body>
+  local ep="$1" body="$2"
+  curl -fsS -m 120 -X POST "$VALHALLA_URL/$ep" \
+    -H 'Content-Type: application/json' -d "$body"
+}
+
+have_jq() { command -v jq >/dev/null 2>&1; }
+
+norm_coord() {
+  printf '%s' "$1" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]*,[[:space:]]*/,/; s/[[:space:]]+/,/'
+}
+is_coord() { printf '%s' "$1" | grep -Eq '^-?[0-9]+(\.[0-9]+)?,-?[0-9]+(\.[0-9]+)?$'; }
+
+# resolve "place name" or "lat,lon" -> "lat,lon"
+resolve() {
+  local a; a="$(norm_coord "$1")"
+  if is_coord "$a"; then printf '%s' "$a"; return; fi
+  local pt
+  pt="$(node "$GAZETTEER" lookup "$1" 1 2>/dev/null | head -1 | awk '{print $1}')"
+  [ -n "$pt" ] || die "no match for: $1"
+  printf '%s' "$pt"
+}
+
+cmd_status() {
+  api status '{}' 2>/dev/null | (have_jq && jq . || cat) || die "service not reachable at $VALHALLA_URL"
+}
+
+cmd_find() {
+  [ $# -ge 1 ] || die 'usage: geo find "somewhere"'
+  node "$GAZETTEER" lookup "$*" 5
+}
+
+cmd_reverse() {
+  [ $# -ge 2 ] || die 'usage: geo reverse <lat> <lon>'
+  local c; c="$(norm_coord "$1 ${2:-}")"
+  is_coord "$c" || die "expected <lat> <lon>"
+  node "$GAZETTEER" reverse "${c%,*}" "${c#*,}" "${3:-2500}"
+}
+
+cmd_route() {
+  [ $# -ge 2 ] || die 'usage: geo route "A" "B"'
+  local from to body res
+  from="$(resolve "$1")"
+  to="$(resolve "${2:-}")"
+  local a_lat="${from%,*}" a_lon="${from#*,}" b_lat="${to%,*}" b_lon="${to#*,}"
+  body="$(jq -n \
+    --argjson al "$a_lat" --argjson ao "$a_lon" \
+    --argjson bl "$b_lat" --argjson bo "$b_lon" \
+    --arg co "$COSTING" \
+    '{locations:[{lat:$al,lon:$ao},{lat:$bl,lon:$bo}], costing:$co}')"
+  res="$(api route "$body")"
+  if [ "$RAW" -eq 1 ]; then printf '%s\n' "$res" | jq .; return; fi
+  printf '%s' "$res" | jq -r '
+    if .error then "error: \(.error_code // "") \(.error)"
+    else
+      .trip.summary as $s
+      | "\($s.length*100|round/100) km, \((($s.time/60)*10|round/10)) min  (\($s.length*0.621371|.*100/100|round|tostring) mi)",
+        (.trip.legs[].maneuvers[]
+         | "  - \(.instruction // .verbal_transition_alert_instruction // ("continue (" + (.type|tostring) + ")"))\(if .length>0 then "  [" + (((.length*100)|round/100)|tostring) + " km]" else "" end)")
+    end'
+}
+
+cmd_matrix() {
+  [ $# -ge 2 ] || die 'usage: geo matrix "origin" "dest1" [dest2 ...]'
+  local origin; origin="$(resolve "$1")"; shift
+  local locs; locs="$(jq -n --argjson lat "${origin%,*}" --argjson lon "${origin#*,}" '{lat:$lat,lon:$lon}')"
+  local dests="[]" d
+  for d in "$@"; do
+    local c; c="$(resolve "$d")"
+    dests="$(jq -n --argjson arr "$dests" --argjson lat "${c%,*}" --argjson lon "${c#*,}" '$arr + [{lat:$lat,lon:$lon,name:"'"$d"'"}]')"
+  done
+  local body; body="$(jq -n --argjson o "$locs" --argjson d "$dests" --arg co "$COSTING" \
+    '{sources:[$o], targets:$d, costing:$co}')"
+  local res; res="$(api sources_to_targets "$body")"
+  if [ "$RAW" -eq 1 ]; then printf '%s\n' "$res" | jq .; return; fi
+  printf '%s' "$res" | jq -r '.sources_to_targets[0][]? | "\((.distance*100|round/100)) km, \((.time/60|round)) min  -> \(.to_index)\(if .to_index==null then "" else "" end)"' 2>/dev/null \
+    || printf '%s\n' "$res" | jq .
+}
+
+cmd_iso() {
+  [ $# -ge 1 ] || die 'usage: geo iso "A" [--minutes N]'
+  local place="$1"; shift || true
+  local minutes=15
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --minutes) minutes="${2:?}"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  local c; c="$(resolve "$place")"
+  local body; body="$(jq -n --argjson lat "${c%,*}" --argjson lon "${c#*,}" --argjson m "$minutes" --arg co "$COSTING" \
+    '{locations:[{lat:$lat,lon:$lon}], costing:$co, contours:[{time:$m,color:"ff0000"}], polygons:true}')"
+  api isochrone "$body" | jq .
+}
+
+svc() { systemctl --user "$@" valhalla.service; }
+
+cmd_serve()   { svc enable --now; svc --no-pager status; }
+cmd_stop()    { svc stop; }
+cmd_restart() { svc restart; svc --no-pager status; }
+cmd_logs()    { journalctl --user -u valhalla.service -n 60 --no-pager; }
+
+usage() { sed -n '3,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
+
+# strip leading options
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) RAW=1; shift ;;
+    --costing) COSTING="${2:?}"; shift 2 ;;
+    -h|--help) usage ;;
+    --) shift; break ;;
+    -*) die "unknown option: $1" ;;
+    *) break ;;
+  esac
+done
+
+cmd="${1:-status}"; shift || true
+case "$cmd" in
+  status|health)     cmd_status ;;
+  find|search|geocode) cmd_find "$@" ;;
+  reverse)           cmd_reverse "$@" ;;
+  route|directions)  cmd_route "$@" ;;
+  matrix)            cmd_matrix "$@" ;;
+  iso|isochrone)     cmd_iso "$@" ;;
+  serve|start)       cmd_serve ;;
+  stop)              cmd_stop ;;
+  restart)           cmd_restart ;;
+  logs)              cmd_logs ;;
+  -h|--help|help)    usage ;;
+  *) die "unknown command: $cmd (try --help)" ;;
+esac

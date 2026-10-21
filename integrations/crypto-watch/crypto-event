@@ -1,0 +1,140 @@
+#!/usr/bin/env node
+// Single fan-out point for wallet events: desktop notification, phone (beacon
+// TTS), WhatsApp message from HQ, and an append-only event log.
+//
+// Usage: crypto-event --chain XMR --direction in --amount 0.5 --txid <hash> \
+//                     [--note "subaddress 1"]
+//        crypto-event --test
+
+import { execFile } from "node:child_process";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const HOME = homedir();
+const HERE = dirname(fileURLToPath(import.meta.url));
+const XDG_STATE = process.env.XDG_STATE_HOME || join(HOME, ".local/state");
+const STATE = process.env.CRYPTO_WATCH_STATE_DIR || join(XDG_STATE, "crypto-watch");
+const EVENTS = process.env.CRYPTO_WATCH_EVENTS || join(STATE, "events.jsonl");
+const WA_STATE =
+  process.env.CRYPTO_WA_STATE ||
+  join(HOME, ".local/state/wa-agent-bridge-hq.json");
+
+function firstExisting(paths) {
+  return paths.filter(Boolean).find((path) => existsSync(path)) || "";
+}
+
+for (const file of [
+  process.env.CRYPTO_WA_ENV,
+  join(HERE, "..", "whatsapp", ".env"),
+  join(HOME, "opencode-whatsapp/.env"),
+  join(HOME, "opencode-whatsapp/.wa-agent-hq.env"),
+].filter(Boolean)) {
+  try { process.loadEnvFile(file); } catch {}
+}
+
+const BEACON_STORE = firstExisting([
+  process.env.BEACON_STORE,
+  join(HOME, "beacon/lib/store.mjs"),
+  join(HERE, "..", "..", "sousveillance", "server", "lib", "store.mjs"),
+]);
+const WAAGENT_MODULE = firstExisting([
+  process.env.WAAGENT_MODULE,
+  join(HERE, "..", "whatsapp", "lib", "waagent.mjs"),
+  join(HOME, "opencode-whatsapp/lib/waagent.mjs"),
+]);
+
+function parseArgs(argv) {
+  const out = { test: false };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--test") { out.test = true; continue; }
+    if (a.startsWith("--")) {
+      const key = a.slice(2);
+      out[key] = argv[++i] ?? "";
+    }
+  }
+  return out;
+}
+
+const args = parseArgs(process.argv.slice(2));
+const chain = (args.chain || "").toUpperCase();
+const direction = args.direction === "out" ? "out" : "in";
+const amount = args.amount || "";
+const txid = args.txid || "";
+const note = args.note || "";
+
+if (!args.test && (!chain || !amount)) {
+  console.error("usage: crypto-event --chain XMR --direction in --amount 0.5 --txid <hash> [--note ...]");
+  process.exit(2);
+}
+
+const verb = direction === "in" ? "received" : "sent";
+const title = args.test ? "Wallet watch" : `${chain} ${verb}`;
+const deskBody = args.test
+  ? "HQ is watching the wallets. Test event."
+  : `${amount} ${chain} ${verb}${note ? ` — ${note}` : ""}\n${txid.slice(0, 16)}…`;
+
+const voice = args.test
+  ? "Watcher online. HQ is tracking the wallets and will call out anything that moves."
+  : direction === "in"
+    ? `Funds inbound. ${amount} ${chain} just landed${note ? `, ${note}` : ""}. Logging it now.`
+    : `Wallet movement. ${amount} ${chain} just left the wallet. Logged.`;
+
+const waText = args.test
+  ? "HQ // wallet watch\nWatcher online. I'll message you when funds move."
+  : `HQ // wallet watch\n${direction === "in" ? "Inbound" : "Outbound"}: ${amount} ${chain}${note ? ` (${note})` : ""}\nTx: ${txid ? txid.slice(0, 16) + "…" : "—"}\n${new Date().toLocaleString("en-US", process.env.CRYPTO_TZ ? { timeZone: process.env.CRYPTO_TZ } : {})}`;
+
+// Desktop.
+execFile("notify-send", ["-a", "Crypto Watch", "-i", "wallet", "-u", "normal", "-t", "10000", title, deskBody],
+  () => {});
+
+// Phone TTS.
+try {
+  if (!BEACON_STORE) throw new Error("beacon store not found (set BEACON_STORE)");
+  const { enqueueSay } = await import(pathToFileURL(BEACON_STORE).href);
+  enqueueSay(voice);
+} catch (err) {
+  console.error(`beacon enqueue failed: ${err.message}`);
+}
+
+// WhatsApp (HQ agent chat).
+try {
+  if (!WAAGENT_MODULE) throw new Error("WhatsApp client not found (set WAAGENT_MODULE)");
+  const { sendText } = await import(pathToFileURL(WAAGENT_MODULE).href);
+  const token = process.env.WA_AGENT_API_KEY;
+  let to = process.env.CRYPTO_WA_TO || "";
+  if (!to) {
+    // The agent chat participant id is not the owner's phone number (it is a
+    // WhatsApp LID). Reuse the id the HQ bridge already has a session for.
+    try {
+      const st = JSON.parse(readFileSync(WA_STATE, "utf8"));
+      const key = Object.keys(st.sessions || {}).find((k) => k.startsWith("user:"));
+      if (key) to = key.split("#")[0];
+    } catch {}
+  }
+  if (token && /^user:\d+$/.test(to)) {
+    await sendText(token, to, waText);
+  } else {
+    console.error(`whatsapp skipped (token=${Boolean(token)} to=${to})`);
+  }
+} catch (err) {
+  console.error(`whatsapp send failed: ${err.message}`);
+}
+
+// Event log for the MCP server / field log.
+try {
+  mkdirSync(STATE, { recursive: true });
+  appendFileSync(EVENTS, JSON.stringify({
+    ts: new Date().toISOString(),
+    kind: args.test ? "test" : "tx",
+    chain: chain || "TEST",
+    direction,
+    amount: amount || null,
+    txid: txid || null,
+    note: note || null,
+  }) + "\n");
+} catch (err) {
+  console.error(`event log failed: ${err.message}`);
+}

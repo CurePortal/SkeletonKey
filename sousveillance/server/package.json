@@ -1,0 +1,20 @@
+{
+  "name": "beacon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Phone location beacon -> local agent: HTTP ingest + WebSocket push + MCP tools",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node beacond.mjs",
+    "mcp": "node mcp-server.mjs",
+    "hq": "node hq.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "ws": "^8.22.0",
+    "zod": "^4.0.0"
+  }
+}

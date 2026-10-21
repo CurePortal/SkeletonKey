@@ -1,0 +1,25 @@
+[Unit]
+Description=SkeletonKey XMR view-only wallet watcher (transaction notifications)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/xmr-watch
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=XMR_NODE=nodes.hashvault.pro:18081
+ExecStart=/usr/bin/env monero-wallet-rpc \
+    --wallet-file %h/.local/share/xmr-watch/watch \
+    --password-file %h/.config/xmr-watch/password \
+    --daemon-address ${XMR_NODE} \
+    --trusted-daemon \
+    --rpc-bind-ip 127.0.0.1 \
+    --rpc-bind-port 18083 \
+    --disable-rpc-login \
+    --log-file %h/.local/state/xmr-watch/wallet-rpc.log \
+    --tx-notify "%h/SkeletonKey/integrations/crypto-watch/xmr-tx-notify %%s"
+Restart=on-failure
+RestartSec=20
+
+[Install]
+WantedBy=default.target

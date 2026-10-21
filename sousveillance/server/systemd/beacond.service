@@ -1,0 +1,13 @@
+[Unit]
+Description=Beacon server (phone location ingest + agent push)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/SkeletonKey/sousveillance/server
+ExecStart=/usr/bin/env node %h/SkeletonKey/sousveillance/server/beacond.mjs
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SkeletonKey (Beta)",
+  "version": "0.9.0",
+  "identifier": "com.skeletonkey.app",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "SkeletonKey(Beta)",
+        "width": 1376,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600,
+        "visible": true,
+        "resizable": true,
+        "fullscreen": false,
+        "maximizable": true,
+        "minimizable": true,
+        "closable": true,
+        "center": true,
+        "focus": true,
+        "alwaysOnTop": false,
+        "decorations": true,
+        "shadow": true,
+        "hiddenTitle": false,
+        "dragDropEnabled": true,
+        "acceptFirstMouse": true,
+        "contentProtected": false,
+        "skipTaskbar": false,
+        "visibleOnAllWorkspaces": false,
+        "zoomHotkeysEnabled": true,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": [
+        "main-capability"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    },
+    "resources": [
+      "../tools",
+      "../mcp",
+      "../scripts",
+      "../deploy",
+      "../sousveillance/maps"
+    ]
+  },
+  "plugins": {
+    "fs": null,
+    "dialog": null
+  }
+}

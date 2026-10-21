@@ -1,0 +1,12 @@
+[Unit]
+Description=SkeletonKey MCP + HQ project bridge
+After=network.target
+[Service]
+Type=simple
+WorkingDirectory=%h/SkeletonKey
+EnvironmentFile=-%h/SkeletonKey/sousveillance/server/.env
+ExecStart=/usr/bin/env node %h/SkeletonKey/mcp/skeletonkey-mcp.mjs
+Environment=SK_MCP_PORT=8799
+Restart=on-failure
+[Install]
+WantedBy=default.target
