@@ -15,9 +15,9 @@ import {
 import { createLeafletIcon, MAP_ICONS } from "../utils/mapIcons";
 import { useLocationIcons } from "../utils/optimizedIconManagement";
 import {
+  baseMapAttribution,
+  baseMapTileUrl,
   getMapTileSettings,
-  mapTileAttribution,
-  mapTileUrl,
   type MapTileSettings,
 } from "../services/mapTiles";
 import L, { LatLngExpression, LatLngTuple } from "leaflet";
@@ -37,6 +37,16 @@ const normalizeCoordinates = (coords: Coordinates): Coordinates => {
   while (lng < -180) lng += 360;
   return { lat, lng };
 };
+
+// (0, 0) is the app's historical "no coordinates" sentinel, not a real place.
+// Treat it as missing so unresolved locations are not stacked off West Africa.
+const hasUsableCoordinates = (
+  coords: Coordinates | null | undefined,
+): coords is Coordinates =>
+  !!coords &&
+  Number.isFinite(coords.lat) &&
+  Number.isFinite(coords.lng) &&
+  !(coords.lat === 0 && coords.lng === 0);
 
 const getWrappedCoordinates = (
   coords: Coordinates[],
@@ -735,7 +745,7 @@ const EnhancedMapDisplay: React.FC<MapDisplayProps> = ({
       const leafletBounds = L.latLngBounds(latLngs);
       if (leafletBounds.isValid()) {
         if (latLngs.length === 1) {
-          mapInstance.setView(leafletBounds.getCenter(), 15);
+          mapInstance.setView(leafletBounds.getCenter(), 10);
         } else {
           mapInstance.fitBounds(leafletBounds, { padding: [50, 50] });
         }
@@ -876,8 +886,10 @@ const EnhancedMapDisplay: React.FC<MapDisplayProps> = ({
     handleCancelDrawing();
   };
 
-  const getTileLayerUrl = () => mapTileUrl(tileSettings, isDarkMode);
-  const getTileLayerAttribution = () => mapTileAttribution(tileSettings);
+  const getTileLayerUrl = () =>
+    baseMapTileUrl(baseMap, tileSettings, isDarkMode);
+  const getTileLayerAttribution = () =>
+    baseMapAttribution(baseMap, tileSettings);
 
   useEffect(() => {
     if (mapInstance) {
@@ -939,7 +951,7 @@ const EnhancedMapDisplay: React.FC<MapDisplayProps> = ({
         />
 
         {mapDisplayLocations.map((loc) =>
-          loc.coordinates ? (
+          hasUsableCoordinates(loc.coordinates) ? (
             <WrappedMarker
               key={loc.id}
               position={loc.coordinates}
@@ -1229,7 +1241,7 @@ const EnhancedMapDisplay: React.FC<MapDisplayProps> = ({
             </h3>
             <div className="flex-1 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded mb-4">
               {safeAllTimelineLocations
-                .filter((loc) => loc.coordinates)
+                .filter((loc) => hasUsableCoordinates(loc.coordinates))
                 .map((location) => (
                   <button
                     key={location.id}

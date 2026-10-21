@@ -71,21 +71,25 @@ export async function saveProjectToFileSystem(
       { id: "caseDocument", name: "Case Document", isBuiltIn: true, version: "1.0.0" },
     ];
 
-    // Add custom entity types if this is an enhanced project
-    const isEnhanced = "entityTypes" in project && "entities" in project;
-    if (isEnhanced) {
-      const enhancedProject = project as EnhancedProjectType;
-      if (enhancedProject.entityTypes) {
-        for (const customType of enhancedProject.entityTypes) {
-          entityTypes.push({
-            id: customType.id,
-            name: customType.name,
-            isBuiltIn: false,
-            version: "1.0.0",
-            schema: customType.schema,
-          });
-        }
+    // Add custom/configured entity types if this project has them.
+    const isEnhanced =
+      Array.isArray((project as any).entityTypes) ||
+      Array.isArray((project as any).entities);
+    const configuredTypes = Array.isArray((project as any).entityTypes)
+      ? ((project as any).entityTypes as any[])
+      : [];
+    if (configuredTypes.length > 0) {
+      const byId = new Map(entityTypes.map((row) => [row.id, row]));
+      for (const customType of configuredTypes) {
+        const existing = byId.get(customType.id);
+        byId.set(customType.id, {
+          ...(existing || {}),
+          ...customType,
+          isBuiltIn: Boolean(existing?.isBuiltIn),
+          version: "1.0.0",
+        });
       }
+      entityTypes = Array.from(byId.values());
     }
 
     // Save entity type definitions
@@ -151,7 +155,6 @@ export async function saveProjectToFileSystem(
         for (const entity of enhancedProject.entities) {
           if (!customGroups.has(entity.entityType)) {
             customGroups.set(entity.entityType, []);
-            entityIndex[entity.entityType] = [];
           }
           customGroups.get(entity.entityType)!.push(entity);
         }
@@ -159,12 +162,14 @@ export async function saveProjectToFileSystem(
         // Save each custom entity group
         for (const [entityType, entities] of customGroups) {
           const typeFolder = entitiesFolder!.folder(entityType);
+          const indexKey = `custom:${entityType}`;
+          entityIndex[indexKey] = [];
           for (const entity of entities) {
             typeFolder!.file(
               `${entity.id}.json`,
               JSON.stringify(entity, null, 2),
             );
-            entityIndex[entityType]!.push(entity.id);
+            entityIndex[indexKey]!.push(entity.id);
           }
         }
       }
@@ -182,6 +187,7 @@ export async function saveProjectToFileSystem(
       mapData: project.mapData,
       deletedIds: (project as any).deletedIds || [],
       entityIndex: entityIndex,
+      entityTypes: configuredTypes,
       format: "unified-zip",
       hasCustomTypes: isEnhanced,
     };
@@ -336,27 +342,39 @@ export async function loadProjectFromFileSystem(
       }
     }
 
-    // Load custom entities if this is an enhanced project
-    if (projectMetadata.hasCustomTypes) {
-      // Extract custom entity types
-      const customTypes = entityTypes.filter((t) => !t.isBuiltIn);
-      project.entityTypes = customTypes.map((t) => ({
-        id: t.id,
-        name: t.name,
-        schema: t.schema,
-      }));
-
-      // Load custom entities
+    // Load configured/custom entity types and their generic entities.
+    if (projectMetadata.hasCustomTypes || projectMetadata.entityTypes) {
+      const manifestTypes = entityTypes.filter((t) => !t.isBuiltIn);
+      const savedTypes = Array.isArray(projectMetadata.entityTypes)
+        ? projectMetadata.entityTypes
+        : [];
+      const configuredTypes = savedTypes.length > 0 ? savedTypes : manifestTypes;
+      project.entityTypes = configuredTypes;
       project.entities = [];
-      for (const customType of customTypes) {
-        const typeIds = entityIndex[customType.id] || [];
-        if (typeIds.length > 0) {
-          for (const id of typeIds) {
-            const entityFile = zip.file(`entities/${customType.id}/${id}.json`);
-            if (entityFile) {
-              const content = await entityFile.async("string");
-              project.entities.push(JSON.parse(content));
-            }
+
+      const builtInIds = new Set([
+        "character",
+        "characters",
+        "location",
+        "locations",
+        "technology",
+        "technologies",
+        "culture",
+        "cultures",
+        "source",
+        "sources",
+        "tags",
+      ]);
+      for (const type of configuredTypes) {
+        if (type.id === "tags") continue;
+        const typeIds = builtInIds.has(type.id)
+          ? entityIndex[`custom:${type.id}`] || []
+          : entityIndex[`custom:${type.id}`] || entityIndex[type.id] || [];
+        for (const id of typeIds) {
+          const entityFile = zip.file(`entities/${type.id}/${id}.json`);
+          if (entityFile) {
+            const content = await entityFile.async("string");
+            project.entities.push(JSON.parse(content));
           }
         }
       }

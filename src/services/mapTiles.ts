@@ -65,3 +65,33 @@ export function mapTileAttribution(settings: MapTileSettings): string {
   }
   return '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 }
+
+// The terrain and satellite base maps are independent of the CARTO preference:
+// choosing one overrides the tile source until the user switches back to
+// Standard, which keeps using OSM/CARTO.
+const ESRI_WORLD_IMAGERY =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+const OPENTOPO_MAP = "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png";
+
+export function baseMapTileUrl(
+  baseMap: string,
+  settings: MapTileSettings,
+  isDark: boolean,
+): string {
+  if (baseMap === "satellite") return ESRI_WORLD_IMAGERY;
+  if (baseMap === "terrain") return OPENTOPO_MAP;
+  return mapTileUrl(settings, isDark);
+}
+
+export function baseMapAttribution(
+  baseMap: string,
+  settings: MapTileSettings,
+): string {
+  if (baseMap === "satellite") {
+    return "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community";
+  }
+  if (baseMap === "terrain") {
+    return 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)';
+  }
+  return mapTileAttribution(settings);
+}

@@ -2,7 +2,6 @@ import React, { useMemo, useRef, useState } from "react";
 import MainContentArea from "../components/layout/MainContentArea";
 import Button from "../components/common/Button";
 import { useProjectData } from "../contexts/ProjectDataContext";
-import { useAppState } from "../contexts/AppStateContext";
 import { useNotification } from "../contexts/NotificationContext";
 import { CaseDocumentType } from "../types";
 import { LLM_PROVIDERS, getProvider } from "../services/llmProviders";
@@ -20,7 +19,6 @@ import {
 import {
   FiUpload,
   FiFileText,
-  FiSearch,
   FiTrash2,
   FiDownload,
   FiCpu,
@@ -49,26 +47,14 @@ const CaseDocumentsPage: React.FC = () => {
     deleteCaseDocument,
     addSourceDocument,
   } = useProjectData();
-  const { setViewMode } = useAppState();
   const { showSuccess, showError, showInfo } = useNotification();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string>("");
   const [busy, setBusy] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
 
   const documents = useMemo(() => project?.caseDocuments || [], [project?.caseDocuments]);
-  const visible = useMemo(
-    () =>
-      documents.filter(
-        (doc) =>
-          !search.trim() ||
-          doc.name.toLowerCase().includes(search.toLowerCase()) ||
-          doc.note.toLowerCase().includes(search.toLowerCase()),
-      ),
-    [documents, search],
-  );
   const selected = useMemo(
     () => documents.find((doc) => doc.id === selectedId) || null,
     [documents, selectedId],
@@ -249,13 +235,6 @@ const CaseDocumentsPage: React.FC = () => {
             onChange={upload}
           />
           <Button
-            variant="outline"
-            leftIcon={<FiBookOpen className="h-4 w-4" />}
-            onClick={() => setViewMode("tasks")}
-          >
-            Tasks
-          </Button>
-          <Button
             variant="primary"
             leftIcon={<FiUpload className="h-4 w-4" />}
             onClick={() => fileInputRef.current?.click()}
@@ -267,22 +246,9 @@ const CaseDocumentsPage: React.FC = () => {
       }
     >
       <div className="w-full">
-        <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 mb-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[220px]">
-              <FiSearch className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-              <input
-                className={`${inputClass} pl-9`}
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search documents..."
-              />
-            </div>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              {documents.length} document(s) · stored on this computer
-            </span>
-          </div>
-        </section>
+        <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+          {documents.length} document(s) · stored on this computer
+        </p>
 
         {documents.length === 0 ? (
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-8 text-center">
@@ -298,7 +264,7 @@ const CaseDocumentsPage: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
               <ul className="divide-y divide-gray-100 dark:divide-gray-700">
-                {visible.map((doc) => (
+                {documents.map((doc) => (
                   <li key={doc.id}>
                     <button
                       type="button"
@@ -325,11 +291,6 @@ const CaseDocumentsPage: React.FC = () => {
                     </button>
                   </li>
                 ))}
-                {visible.length === 0 && (
-                  <li className="p-4 text-sm text-gray-500 dark:text-gray-400">
-                    No matches.
-                  </li>
-                )}
               </ul>
             </section>
 

@@ -9,6 +9,7 @@ import {
   FaPlus,
   FaMap,
   FaDrawPolygon,
+  FaTasks,
 } from "react-icons/fa";
 import { useProjectData } from "../contexts/ProjectDataContext";
 import { ID } from "../types";
@@ -299,6 +300,15 @@ const NarrativeResourcePanel: React.FC<NarrativeResourcePanelProps> = ({
           nameField="displayName"
           onInsert={handleInsert}
           icon={<FaMap className="h-3 w-3" />}
+        />
+        <ResourceAccordion
+          title="Tasks"
+          items={project?.tasks || []}
+          type="Task"
+          searchQuery={searchQuery}
+          nameField="title"
+          onInsert={handleInsert}
+          icon={<FaTasks className="h-3 w-3" />}
         />
         <ResourceAccordion
           title="Sources"

@@ -421,6 +421,20 @@ const EntityDetailsPanel: React.FC<EntityDetailsPanelProps> = ({
     };
   }, [entity, entityType, project]);
 
+  const linkedTasks = useMemo(() => {
+    if (!entity || !Array.isArray(project?.tasks)) return [];
+    return project.tasks.filter((task) =>
+      (task.linkedEntityIds || []).includes(entity.id),
+    );
+  }, [entity, project?.tasks]);
+
+  const taskStatusLabel: Record<string, string> = {
+    todo: "To do",
+    doing: "In progress",
+    blocked: "Blocked",
+    done: "Done",
+  };
+
   // Updated handleEventClick function
   const handleEventClick = (event: any) => {
     setViewMode("timeline");
@@ -721,6 +735,41 @@ const EntityDetailsPanel: React.FC<EntityDetailsPanelProps> = ({
                   ).length
                 }
               </p>
+            </div>
+          </div>
+        )}
+
+        {linkedTasks.length > 0 && (
+          <div className="p-5 border-b border-gray-200 dark:border-gray-700">
+            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Linked Tasks ({linkedTasks.length})
+            </h4>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {linkedTasks.map((task) => (
+                <button
+                  key={task.id}
+                  type="button"
+                  onClick={() => setViewMode("tasks")}
+                  className="w-full rounded-md bg-gray-50 dark:bg-gray-700 p-2 text-left hover:bg-gray-100 dark:hover:bg-gray-600"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-200">
+                      {taskStatusLabel[task.status] || task.status}
+                    </span>
+                    <span className="truncate text-xs font-medium text-gray-800 dark:text-gray-200">
+                      {task.title}
+                    </span>
+                  </div>
+                  {task.due && (
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                      Due {task.due}
+                      {task.dueEnd && task.dueEnd !== task.due
+                        ? ` – ${task.dueEnd}`
+                        : ""}
+                    </p>
+                  )}
+                </button>
+              ))}
             </div>
           </div>
         )}

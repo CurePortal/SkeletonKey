@@ -17,6 +17,9 @@ import {
   FaPlus, // For New Project
   FaSpinner, // For Loading
   FaTasks,
+  FaProjectDiagram,
+  FaTags,
+  FaLightbulb,
 } from "react-icons/fa"; // Import react-icons
 import { BsPin, BsPinFill } from "react-icons/bs"; // Import Pin icons
 import { LuBrainCircuit } from "react-icons/lu"; // Import AI icon
@@ -25,6 +28,11 @@ import { useAppState } from "../../contexts/AppStateContext";
 import { useNotification } from "../../contexts/NotificationContext";
 import { openAnotherProject } from "../../services/mainProjectService";
 import { ProjectType } from "../../types/project"; //
+import {
+  LEGACY_ID_ALIAS,
+  knowledgeBaseEntitiesForSection,
+  resolveKnowledgeBaseSections,
+} from "../../utils/knowledgeBaseCategories";
 
 interface NavItemProps {
   label: string;
@@ -190,11 +198,16 @@ const Sidebar: React.FC = () => {
 
   const collapsedNav = [
     { view: "dashboard", label: "Overview", icon: <FaThLarge className="h-5 w-5" /> },
-    { view: "map", label: "Sousveillance", icon: <FaMap className="h-5 w-5" /> },
     { view: "tasks", label: "Tasks", icon: <FaTasks className="h-5 w-5" /> },
+    { view: "map", label: "Maps & Tracking", icon: <FaMap className="h-5 w-5" /> },
     { view: "documents", label: "Documents", icon: <FaFileAlt className="h-5 w-5" /> },
     { view: "knowledge-base", label: "Knowledge Base", icon: <FaBookOpen className="h-5 w-5" /> },
     { view: "narrative", label: "Narrative", icon: <FaPenSquare className="h-5 w-5" /> },
+    {
+      view: "flows-ideas",
+      label: "Flows & Ideas",
+      icon: <FaProjectDiagram className="h-5 w-5" />,
+    },
     { view: "timeline", label: "Timeline", icon: <FaStream className="h-5 w-5" /> },
     {
       view: "ai-analysis",
@@ -288,21 +301,21 @@ const Sidebar: React.FC = () => {
                   }}
                 />
                 <NavItem
-                  label="Sousveillance"
-                  icon={<FaMap className="h-5 w-5" />}
-                  isActive={viewMode === "map"}
-                  onClick={() => {
-                    setViewMode("map");
-                    setCurrentKnowledgeBaseCategory(null);
-                    setSelectedKnowledgeBaseEntityId(null);
-                  }}
-                />
-                <NavItem
                   label="Tasks"
                   icon={<FaTasks className="h-5 w-5" />}
                   isActive={viewMode === "tasks"}
                   onClick={() => {
                     setViewMode("tasks");
+                    setCurrentKnowledgeBaseCategory(null);
+                    setSelectedKnowledgeBaseEntityId(null);
+                  }}
+                />
+                <NavItem
+                  label="Maps & Tracking"
+                  icon={<FaMap className="h-5 w-5" />}
+                  isActive={viewMode === "map"}
+                  onClick={() => {
+                    setViewMode("map");
                     setCurrentKnowledgeBaseCategory(null);
                     setSelectedKnowledgeBaseEntityId(null);
                   }}
@@ -333,6 +346,16 @@ const Sidebar: React.FC = () => {
                   isActive={viewMode === "narrative"}
                   onClick={() => {
                     setViewMode("narrative");
+                    setCurrentKnowledgeBaseCategory(null);
+                    setSelectedKnowledgeBaseEntityId(null);
+                  }}
+                />
+                <NavItem
+                  label="Flows & Ideas"
+                  icon={<FaProjectDiagram className="h-5 w-5" />}
+                  isActive={viewMode === "flows-ideas"}
+                  onClick={() => {
+                    setViewMode("flows-ideas");
                     setCurrentKnowledgeBaseCategory(null);
                     setSelectedKnowledgeBaseEntityId(null);
                   }}
@@ -451,76 +474,50 @@ const Sidebar: React.FC = () => {
                       </button>
                     )}
                   </div>
-                  <NavItem
-                    label="Characters"
-                    icon={<FaUser className="h-5 w-5" />}
-                    isActive={
-                      viewMode === "knowledge-base" &&
-                      currentKnowledgeBaseCategory === "characters"
-                    }
-                    onClick={() => {
-                      setViewMode("knowledge-base");
-                      setCurrentKnowledgeBaseCategory("characters");
-                      setSelectedKnowledgeBaseEntityId(null);
-                    }}
-                    badge={project.characters?.length || 0}
-                  />
-                  <NavItem
-                    label="Locations"
-                    icon={<FaMapMarkerAlt className="h-5 w-5" />}
-                    isActive={
-                      viewMode === "knowledge-base" &&
-                      currentKnowledgeBaseCategory === "locations"
-                    }
-                    onClick={() => {
-                      setViewMode("knowledge-base");
-                      setCurrentKnowledgeBaseCategory("locations");
-                      setSelectedKnowledgeBaseEntityId(null);
-                    }}
-                    badge={project.locations?.length || 0}
-                  />
-                  <NavItem
-                    label="Technologies"
-                    icon={<FaMicrochip className="h-5 w-5" />}
-                    isActive={
-                      viewMode === "knowledge-base" &&
-                      currentKnowledgeBaseCategory === "technologies"
-                    }
-                    onClick={() => {
-                      setViewMode("knowledge-base");
-                      setCurrentKnowledgeBaseCategory("technologies");
-                      setSelectedKnowledgeBaseEntityId(null);
-                    }}
-                    badge={project.technologies?.length || 0}
-                  />
-                  <NavItem
-                    label="Cultures"
-                    icon={<FaGlobe className="h-5 w-5" />}
-                    isActive={
-                      viewMode === "knowledge-base" &&
-                      currentKnowledgeBaseCategory === "cultures"
-                    }
-                    onClick={() => {
-                      setViewMode("knowledge-base");
-                      setCurrentKnowledgeBaseCategory("cultures");
-                      setSelectedKnowledgeBaseEntityId(null);
-                    }}
-                    badge={project.cultures?.length || 0}
-                  />
-                  <NavItem
-                    label="Sources"
-                    icon={<FaFileAlt className="h-5 w-5" />}
-                    isActive={
-                      viewMode === "knowledge-base" &&
-                      currentKnowledgeBaseCategory === "sources"
-                    }
-                    onClick={() => {
-                      setViewMode("knowledge-base");
-                      setCurrentKnowledgeBaseCategory("sources");
-                      setSelectedKnowledgeBaseEntityId(null);
-                    }}
-                    badge={project.sources?.length || 0}
-                  />
+                  {resolveKnowledgeBaseSections(project)
+                    .filter((section) => section.id !== "tags")
+                    .map((section) => {
+                      const iconMap: Record<
+                        string,
+                        React.ElementType
+                      > = {
+                        FaUser,
+                        FaMapMarkerAlt,
+                        FaMicrochip,
+                        FaGlobe,
+                        FaFileAlt,
+                        FaTags,
+                        FaCog,
+                        FaLightbulb,
+                      };
+                      const Icon = iconMap[section.icon] || FaFileAlt;
+                      const activeId =
+                        LEGACY_ID_ALIAS[
+                          currentKnowledgeBaseCategory || ""
+                        ] || currentKnowledgeBaseCategory;
+                      return (
+                        <NavItem
+                          key={section.id}
+                          label={section.namePlural}
+                          icon={<Icon className="h-5 w-5" />}
+                          isActive={
+                            viewMode === "knowledge-base" &&
+                            activeId === section.id
+                          }
+                          onClick={() => {
+                            setViewMode("knowledge-base");
+                            setCurrentKnowledgeBaseCategory(section.id);
+                            setSelectedKnowledgeBaseEntityId(null);
+                          }}
+                          badge={
+                            knowledgeBaseEntitiesForSection(
+                              project,
+                              section.id,
+                            ).length
+                          }
+                        />
+                      );
+                    })}
                 </div>
               )}
             </>

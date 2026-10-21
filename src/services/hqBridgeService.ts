@@ -84,6 +84,35 @@ export function hqPullProject(): Promise<ProjectType> {
   return request<ProjectType>("/project", {}, 15000);
 }
 
+export interface HqProjectAction {
+  kind: string;
+  args?: Record<string, unknown>;
+}
+
+export interface HqActionResponse {
+  ok: boolean;
+  results: Array<{
+    ok: boolean;
+    kind?: string;
+    result?: unknown;
+    error?: string;
+  }>;
+}
+
+export function runHqActions(
+  actions: HqProjectAction[],
+): Promise<HqActionResponse> {
+  return request<HqActionResponse>(
+    "/actions",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actions }),
+    },
+    30000,
+  );
+}
+
 export function hqPushProject(project: ProjectType): Promise<HqStatus> {
   return request<HqStatus>(
     "/project",

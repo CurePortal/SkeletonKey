@@ -6,6 +6,7 @@ interface MainContentAreaProps {
   title?: string;
   subtitle?: string;
   actions?: ReactNode;
+  inlineActions?: ReactNode;
   showBackButton?: boolean;
   onBackClick?: () => void;
   noPadding?: boolean;
@@ -16,6 +17,7 @@ const MainContentArea: React.FC<MainContentAreaProps> = ({
   title,
   subtitle,
   actions,
+  inlineActions,
   showBackButton = false,
   onBackClick,
   noPadding = false,
@@ -62,6 +64,11 @@ const MainContentArea: React.FC<MainContentAreaProps> = ({
                 </p>
               )}
             </div>
+            {inlineActions && (
+              <div className="ml-4 flex flex-wrap items-center gap-2">
+                {inlineActions}
+              </div>
+            )}
           </div>
           {actions && (
             <div className="flex items-center space-x-2">{actions}</div>

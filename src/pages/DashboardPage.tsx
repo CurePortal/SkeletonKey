@@ -317,6 +317,9 @@ const DashboardPage: React.FC = () => {
                     <span className="flex-1 truncate">{task.title}</span>
                     <span className="text-[10px] text-gray-500 dark:text-gray-400">
                       {formatDate(task.due)}
+                      {task.dueEnd && task.dueEnd !== task.due
+                        ? ` – ${formatDate(task.dueEnd)}`
+                        : ""}
                     </span>
                   </button>
                 </li>

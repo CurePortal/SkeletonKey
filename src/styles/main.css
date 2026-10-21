@@ -108,3 +108,50 @@ body.light,
 .z-dropdown {
     z-index: 30;
 }
+
+/* Notes editor: keep typed text readable in both themes. */
+.notes-editor,
+.notes-editor p,
+.notes-editor div,
+.notes-editor li,
+.notes-editor blockquote,
+.notes-editor h1,
+.notes-editor h2,
+.notes-editor h3,
+.notes-editor h4,
+.notes-editor h5,
+.notes-editor h6,
+.notes-editor strong,
+.notes-editor em,
+.notes-editor u,
+.notes-editor td,
+.notes-editor th {
+    color: #1f2937;
+}
+
+.dark .notes-editor,
+.dark .notes-editor p,
+.dark .notes-editor div,
+.dark .notes-editor li,
+.dark .notes-editor blockquote,
+.dark .notes-editor h1,
+.dark .notes-editor h2,
+.dark .notes-editor h3,
+.dark .notes-editor h4,
+.dark .notes-editor h5,
+.dark .notes-editor h6,
+.dark .notes-editor strong,
+.dark .notes-editor em,
+.dark .notes-editor u,
+.dark .notes-editor td,
+.dark .notes-editor th {
+    color: #f3f4f6;
+}
+
+.notes-editor a {
+    color: #2563eb;
+}
+
+.dark .notes-editor a {
+    color: #60a5fa;
+}

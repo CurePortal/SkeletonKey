@@ -34,6 +34,10 @@ import { withDeletionTombstones } from "../services/mainProjectService";
 import { v4 as uuidv4 } from "uuid";
 import { saveProjectToFileSystem } from "../services/projectFileSystem";
 import { compressedStorage } from "../services/compressedStorageService";
+import type {
+  CustomEntityType as DynamicEntityType,
+  GenericEntity,
+} from "../types/dynamicEntity";
 
 // --- UNDO/REDO: History State Interface ---
 interface HistoryState<T> {
@@ -157,6 +161,17 @@ interface ProjectDataContextType {
   ) => ID;
   updateTask: (task: TaskType) => void;
   deleteTask: (taskId: ID) => void;
+
+  // Knowledge base category + generic entity operations
+  upsertEntityType: (entityType: DynamicEntityType) => void;
+  deleteEntityType: (entityTypeId: ID) => void;
+  addGenericEntity: (
+    entity: Omit<GenericEntity, "id" | "createdAt" | "updatedAt"> & {
+      id?: ID;
+    },
+  ) => ID;
+  updateGenericEntity: (entity: GenericEntity) => void;
+  deleteGenericEntity: (entityId: ID) => void;
 
   // Case document operations (local uploads + analysis)
   addCaseDocument: (
@@ -1285,12 +1300,70 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
     (task: TaskType) => {
       updateProjectDataAndAutoSave((currentProject) => {
         if (!currentProject) return null;
+        const previous = (currentProject.tasks || []).find(
+          (row) => row.id === task.id,
+        );
+        const becameDone =
+          previous?.status !== "done" && task.status === "done";
+        const stamp = new Date().toISOString();
+        let timelines = currentProject.timelines || [];
+
+        // Only the transition into "done" writes a timeline event. Adding a
+        // task or editing its fields must not create history entries.
+        if (becameDone) {
+          const mainTimeline =
+            timelines.find((timeline) => timeline.isMainTimeline) ||
+            timelines[0];
+          if (mainTimeline) {
+            const now = new Date();
+            const date = `${now.getFullYear()}-${String(
+              now.getMonth() + 1,
+            ).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+            const event: EventType = {
+              id: uuidv4(),
+              title: `Completed: ${task.title}`.slice(0, 200),
+              description: task.due
+                ? `Task completed. Due ${task.due}${
+                    task.dueEnd && task.dueEnd !== task.due
+                      ? ` to ${task.dueEnd}`
+                      : ""
+                  }.`
+                : "Task completed.",
+              date,
+              endDate: null,
+              timelineId: mainTimeline.id,
+              importance: 2,
+              iconId: "default",
+              causes: [],
+              effects: [],
+              linkedCharacterIds: [],
+              linkedLocationIds: [],
+              linkedTechnologyIds: [],
+              linkedCultureIds: [],
+              linkedSourceDocumentIds: [],
+              linkedNarrativeIds: [],
+              notes: "Auto-recorded when the task was marked done.",
+              tags: ["task", "completed", `task:${task.id}`],
+              isPointOfDivergence: false,
+            };
+            timelines = timelines.map((timeline) =>
+              timeline.id === mainTimeline.id
+                ? {
+                    ...timeline,
+                    events: [...(timeline.events || []), event],
+                  }
+                : timeline,
+            );
+          }
+        }
+
         return {
           ...currentProject,
           tasks: (currentProject.tasks || []).map((row) =>
-            row.id === task.id ? { ...task, updatedAt: new Date().toISOString() } : row,
+            row.id === task.id ? { ...task, updatedAt: stamp } : row,
           ),
-          updatedAt: new Date().toISOString(),
+          timelines,
+          updatedAt: stamp,
         };
       });
     },
@@ -1304,6 +1377,107 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
         return {
           ...currentProject,
           tasks: (currentProject.tasks || []).filter((row) => row.id !== taskId),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    },
+    [updateProjectDataAndAutoSave],
+  );
+
+  const upsertEntityType = useCallback(
+    (entityType: DynamicEntityType) => {
+      updateProjectDataAndAutoSave((currentProject) => {
+        if (!currentProject) return null;
+        const existing = currentProject.entityTypes || [];
+        const has = existing.some((row) => row.id === entityType.id);
+        return {
+          ...currentProject,
+          entityTypes: has
+            ? existing.map((row) =>
+                row.id === entityType.id ? entityType : row,
+              )
+            : [...existing, entityType],
+          entities: currentProject.entities || [],
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    },
+    [updateProjectDataAndAutoSave],
+  );
+
+  const deleteEntityType = useCallback(
+    (entityTypeId: ID) => {
+      updateProjectDataAndAutoSave((currentProject) => {
+        if (!currentProject) return null;
+        return {
+          ...currentProject,
+          entityTypes: (currentProject.entityTypes || []).filter(
+            (row) => row.id !== entityTypeId,
+          ),
+          entities: (currentProject.entities || []).filter(
+            (row) => row.entityType !== entityTypeId,
+          ),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    },
+    [updateProjectDataAndAutoSave],
+  );
+
+  const addGenericEntity = useCallback(
+    (
+      entity: Omit<GenericEntity, "id" | "createdAt" | "updatedAt"> & {
+        id?: ID;
+      },
+    ): ID => {
+      const id = entity.id || uuidv4();
+      const stamp = new Date().toISOString();
+      updateProjectDataAndAutoSave((currentProject) => {
+        if (!currentProject) return null;
+        const row: GenericEntity = {
+          ...entity,
+          id,
+          createdAt: stamp,
+          updatedAt: stamp,
+        };
+        return {
+          ...currentProject,
+          entities: [...(currentProject.entities || []), row],
+          updatedAt: stamp,
+        };
+      });
+      return id;
+    },
+    [updateProjectDataAndAutoSave],
+  );
+
+  const updateGenericEntity = useCallback(
+    (entity: GenericEntity) => {
+      updateProjectDataAndAutoSave((currentProject) => {
+        if (!currentProject) return null;
+        return {
+          ...currentProject,
+          entities: (currentProject.entities || []).map((row) =>
+            row.id === entity.id
+              ? { ...entity, updatedAt: new Date().toISOString() }
+              : row,
+          ),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    },
+    [updateProjectDataAndAutoSave],
+  );
+
+  const deleteGenericEntity = useCallback(
+    (entityId: ID) => {
+      updateProjectDataAndAutoSave((currentProject) => {
+        if (!currentProject) return null;
+        return {
+          ...currentProject,
+          entities: (currentProject.entities || []).filter(
+            (row) => row.id !== entityId,
+          ),
           updatedAt: new Date().toISOString(),
         };
       });
@@ -1919,6 +2093,11 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
         deleteSourceDocument,
         addTask,
         updateTask,
+        upsertEntityType,
+        deleteEntityType,
+        addGenericEntity,
+        updateGenericEntity,
+        deleteGenericEntity,
         deleteTask,
         addCaseDocument,
         updateCaseDocument,

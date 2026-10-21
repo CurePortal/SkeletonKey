@@ -39,6 +39,7 @@ import TimelineEditorPage from "./pages/TimelineEditorPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import MapEditorPage from "./pages/MapEditorPage";
 import NarrativeBuilderPage from "./pages/NarrativeBuilderPage";
+import FlowsIdeasPage from "./pages/FlowsIdeasPage";
 import TasksPage from "./pages/TasksPage";
 import CaseDocumentsPage from "./pages/CaseDocumentsPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -87,7 +88,9 @@ const ProjectContent: React.FC = () => {
     case "map":
       return <MapEditorPage />;
     case "narrative":
-      return <NarrativeBuilderPage />;
+      return <NarrativeBuilderPage section="narrative" />;
+    case "flows-ideas":
+      return <FlowsIdeasPage />;
     case "tasks":
       return <TasksPage />;
     case "documents":

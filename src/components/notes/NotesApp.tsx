@@ -796,7 +796,7 @@ const NotesApp: React.FC<NotesAppProps> = ({
           <div
             ref={editorRef}
             contentEditable
-            className="min-h-[600px] prose prose-lg dark:prose-invert max-w-none focus:outline-none"
+            className="notes-editor min-h-[600px] prose prose-lg dark:prose-invert max-w-none focus:outline-none"
             style={{
               fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif',
               lineHeight: "1.8",

@@ -15,7 +15,7 @@ interface DayGroupCardProps {
   isExpanded: boolean;
   isSelected: boolean;
   timelineColor: string;
-  onToggle: (key: string) => void;
+  onToggle: () => void;
   onEventClick: (event: EventType) => void;
   onEventRightClick?: (event: EventType, e: React.MouseEvent) => void;
   onBranchClick?: (event: EventType) => void;
@@ -60,11 +60,11 @@ const DayGroupCard: React.FC<DayGroupCardProps> = ({
   onBranchClick,
   formatDate,
 }) => {
-  const { events, key } = group;
+  const { events } = group;
   const count = events.length;
   const activity = activityFor(events);
   const topTitles = [...new Set(events.map((event) => event.title))].slice(0, 3);
-  const expandedWidth = 360;
+  const expandedWidth = width;
 
   return (
     <div
@@ -76,23 +76,32 @@ const DayGroupCard: React.FC<DayGroupCardProps> = ({
       style={{
         left: `${x}px`,
         top: `${y}px`,
+        transform: "translateY(-50%)",
         width: isExpanded ? `${expandedWidth}px` : `${width}px`,
         minHeight: `${height}px`,
-        height: isExpanded ? "auto" : `${height}px`,
         maxHeight: isExpanded ? "360px" : undefined,
-        overflowY: isExpanded ? "auto" : "hidden",
+        overflowY: isExpanded ? "auto" : "visible",
         zIndex: isExpanded ? 1000 : isSelected ? 20 : 15,
         borderColor: timelineColor,
         borderWidth: "2px",
         borderStyle: "solid",
       }}
-      onClick={() => onToggle(key)}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      onWheel={(e) => {
+        if (isExpanded) e.stopPropagation();
+      }}
+      onMouseDown={(e) => {
+        if (isExpanded) e.stopPropagation();
+      }}
     >
       <div className="p-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              {formatDate(key)}
+              {formatDate(group.key)}
             </div>
             <div className="text-xs font-medium text-gray-900 dark:text-white truncate">
               {count === 1 ? events[0].title : `${count} events`}

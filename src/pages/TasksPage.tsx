@@ -3,7 +3,6 @@ import JSZip from "jszip";
 import MainContentArea from "../components/layout/MainContentArea";
 import Button from "../components/common/Button";
 import { useProjectData } from "../contexts/ProjectDataContext";
-import { useAppState } from "../contexts/AppStateContext";
 import { useNotification } from "../contexts/NotificationContext";
 import { CaseDocumentType, TaskStatus, TaskType } from "../types";
 import { getCaseFile } from "../services/documentStore";
@@ -11,25 +10,15 @@ import {
   FiPlus,
   FiTrash2,
   FiClock,
-  FiFileText,
   FiCheckCircle,
-  FiSearch,
   FiDownload,
 } from "react-icons/fi";
 
 const STATUS_ORDER: TaskStatus[] = ["todo", "doing", "blocked", "done"];
-const DEFAULT_SECTIONS = [
-  "Money & benefits",
-  "Housing",
-  "Food",
-  "Health",
-  "Legal",
-  "Documents & ID",
-  "Work & income",
-  "Transportation",
-  "Family",
-  "Other",
-];
+const ACTIVE_STATUS_ORDER: TaskStatus[] = STATUS_ORDER.filter(
+  (status) => status !== "done",
+);
+
 
 const statusLabel = (status: TaskStatus) =>
   ({ todo: "To do", doing: "In progress", blocked: "Blocked", done: "Done" })[
@@ -49,13 +38,13 @@ const inputClass =
 
 const TasksPage: React.FC = () => {
   const { project, addTask, updateTask, deleteTask } = useProjectData();
-  const { setViewMode } = useAppState();
   const { showSuccess, showError } = useNotification();
 
   const [title, setTitle] = useState("");
-  const [section, setSection] = useState("Other");
+  const [dueEnd, setDueEnd] = useState("");
+  const [multiDue, setMultiDue] = useState(false);
+  const [taskEntityIds, setTaskEntityIds] = useState<string[]>([]);
   const [due, setDue] = useState("");
-  const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | TaskStatus>("all");
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [packingId, setPackingId] = useState("");
@@ -65,25 +54,40 @@ const TasksPage: React.FC = () => {
     () => project?.caseDocuments || [],
     [project?.caseDocuments],
   );
-  const sections = useMemo(
-    () => [...new Set([...DEFAULT_SECTIONS, ...tasks.map((t) => t.section)])],
-    [tasks],
+  const knowledgeBase = useMemo(
+    () =>
+      [
+        { key: "characters", label: "Characters", rows: project?.characters || [] },
+        { key: "locations", label: "Locations", rows: project?.locations || [] },
+        {
+          key: "technologies",
+          label: "Technologies",
+          rows: project?.technologies || [],
+        },
+        { key: "cultures", label: "Cultures", rows: project?.cultures || [] },
+      ].filter((group) => group.rows.length > 0),
+    [
+      project?.characters,
+      project?.locations,
+      project?.technologies,
+      project?.cultures,
+    ],
   );
+  const knowledgeBaseById = useMemo(() => {
+    const rows = new Map<string, { name: string; kind: string }>();
+    for (const group of knowledgeBase) {
+      for (const row of group.rows) {
+        rows.set(row.id, { name: row.name, kind: group.label });
+      }
+    }
+    return rows;
+  }, [knowledgeBase]);
   const visible = useMemo(
     () =>
-      tasks.filter((task) => {
-        if (statusFilter !== "all" && task.status !== statusFilter) return false;
-        if (!search.trim()) return true;
-        const needle = search.toLowerCase();
-        return (
-          task.title.toLowerCase().includes(needle) ||
-          task.section.toLowerCase().includes(needle) ||
-          (Array.isArray(task.notes) ? task.notes : []).some((note) =>
-            String(note?.text || "").toLowerCase().includes(needle),
-          )
-        );
-      }),
-    [tasks, statusFilter, search],
+      tasks.filter(
+        (task) => statusFilter === "all" || task.status === statusFilter,
+      ),
+    [tasks, statusFilter],
   );
 
   const grouped = useMemo(() => {
@@ -250,21 +254,20 @@ const TasksPage: React.FC = () => {
     if (!title.trim()) return;
     addTask({
       title: title.trim().slice(0, 200),
-      section,
+      section: "General",
       status: "todo",
       due,
+      dueEnd: multiDue ? dueEnd || undefined : undefined,
       notes: [],
       documentIds: [],
+      linkedEntityIds: taskEntityIds,
     });
     setTitle("");
     setDue("");
+    setDueEnd("");
+    setMultiDue(false);
+    setTaskEntityIds([]);
     showSuccess("Task added.");
-  };
-
-  const cycle = (task: TaskType) => {
-    const next =
-      STATUS_ORDER[(STATUS_ORDER.indexOf(task.status) + 1) % STATUS_ORDER.length];
-    updateTask({ ...task, status: next });
   };
 
   const addNote = (task: TaskType) => {
@@ -290,25 +293,275 @@ const TasksPage: React.FC = () => {
     });
   };
 
+  const toggleEntity = (task: TaskType, entityId: string) => {
+    const ids = Array.isArray(task.linkedEntityIds)
+      ? task.linkedEntityIds
+      : [];
+    updateTask({
+      ...task,
+      linkedEntityIds: ids.includes(entityId)
+        ? ids.filter((id) => id !== entityId)
+        : [...ids, entityId],
+    });
+  };
+
+  const toggleDraftEntity = (entityId: string) => {
+    setTaskEntityIds((current) =>
+      current.includes(entityId)
+        ? current.filter((id) => id !== entityId)
+        : [...current, entityId],
+    );
+  };
+
   const today = new Date().toISOString().slice(0, 10);
+
+  const renderTaskCard = (task: TaskType) => {
+    const deadline = task.dueEnd || task.due;
+    const overdue = Boolean(
+      deadline && deadline < today && task.status !== "done",
+    );
+    const linkedEntities = (task.linkedEntityIds || [])
+      .map((id) => knowledgeBaseById.get(id))
+      .filter((row): row is { name: string; kind: string } => Boolean(row));
+    return (
+      <article
+        key={task.id}
+        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3"
+      >
+        <div className="flex items-start gap-2">
+          <select
+            value={task.status}
+            onChange={(event) =>
+              updateTask({
+                ...task,
+                status: event.target.value as TaskStatus,
+              })
+            }
+            className={`cursor-pointer rounded-full border-0 text-[10px] font-semibold px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500 ${statusStyle(task.status)}`}
+            title="Change status"
+          >
+            {STATUS_ORDER.map((status) => (
+              <option key={status} value={status}>
+                {statusLabel(status)}
+              </option>
+            ))}
+          </select>
+          {task.section && task.section !== "General" && (
+            <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+              {task.section}
+            </span>
+          )}
+          <button
+            type="button"
+            className="ml-auto text-gray-400 hover:text-red-500"
+            onClick={() => deleteTask(task.id)}
+            aria-label="Delete task"
+          >
+            <FiTrash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <h3 className="text-sm font-medium text-gray-900 dark:text-white mt-2">
+          {task.title}
+        </h3>
+        {task.due && (
+          <div
+            className={`mt-1 flex items-center gap-1 text-[11px] ${overdue ? "text-red-600 dark:text-red-400" : "text-gray-500 dark:text-gray-400"}`}
+          >
+            <FiClock className="h-3 w-3" /> {task.due}
+            {task.dueEnd && task.dueEnd !== task.due
+              ? ` → ${task.dueEnd}`
+              : ""}
+            {overdue ? " · overdue" : ""}
+          </div>
+        )}
+
+        {linkedEntities.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {linkedEntities.map((row) => (
+              <span
+                key={`${row.kind}-${row.name}`}
+                className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
+                title={row.kind}
+              >
+                {row.name}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {Array.isArray(task.notes) && task.notes.length > 0 && (
+          <ul className="mt-2 space-y-1">
+            {task.notes.slice(-3).map((note, index) => (
+              <li
+                key={`${note.ts}-${index}`}
+                className="text-[11px] text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 rounded px-2 py-1"
+              >
+                {note.text}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="mt-2 flex gap-1">
+          <input
+            className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-[11px] text-gray-900 dark:text-white"
+            placeholder="Add a note"
+            value={noteDrafts[task.id] || ""}
+            onChange={(event) =>
+              setNoteDrafts((prev) => ({
+                ...prev,
+                [task.id]: event.target.value,
+              }))
+            }
+            onKeyDown={(event) => {
+              if (event.key === "Enter") addNote(task);
+            }}
+          />
+          <button
+            type="button"
+            className="text-[11px] text-blue-600 dark:text-blue-400"
+            onClick={() => addNote(task)}
+          >
+            Save
+          </button>
+        </div>
+
+        {documents.length > 0 && (
+          <details className="mt-2">
+            <summary className="text-[11px] text-gray-500 dark:text-gray-400 cursor-pointer">
+              Documents ({task.documentIds.length})
+            </summary>
+            <div className="mt-1 max-h-28 overflow-auto space-y-1">
+              {documents.map((doc) => (
+                <label
+                  key={doc.id}
+                  className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"
+                >
+                  <input
+                    type="checkbox"
+                    checked={task.documentIds.includes(doc.id)}
+                    onChange={() => toggleDocument(task, doc.id)}
+                  />
+                  <span className="truncate">{doc.name}</span>
+                </label>
+              ))}
+            </div>
+          </details>
+        )}
+
+        {knowledgeBase.length > 0 && (
+          <details className="mt-2">
+            <summary className="text-[11px] text-gray-500 dark:text-gray-400 cursor-pointer">
+              Knowledge base ({(task.linkedEntityIds || []).length})
+            </summary>
+            <div className="mt-1 max-h-40 overflow-auto space-y-2">
+              {knowledgeBase.map((group) => (
+                <div key={group.key}>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    {group.label}
+                  </p>
+                  <div className="space-y-1">
+                    {group.rows.map((row) => (
+                      <label
+                        key={row.id}
+                        className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={(task.linkedEntityIds || []).includes(
+                            row.id,
+                          )}
+                          onChange={() => toggleEntity(task, row.id)}
+                        />
+                        <span className="truncate">{row.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+
+        {task.documentIds.length > 0 && (
+          <button
+            type="button"
+            onClick={() => void downloadPack(task)}
+            disabled={packingId === task.id}
+            className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 disabled:opacity-50"
+            title="Download a ZIP with a cover index and all documents attached to this task"
+          >
+            <FiDownload className="h-3 w-3" />
+            {packingId === task.id ? "Preparing pack…" : "Document pack"}
+          </button>
+        )}
+      </article>
+    );
+  };
+
+  const renderColumn = (
+    status: TaskStatus,
+    layout: "stack" | "grid" = "stack",
+  ) => (
+    <section
+      key={status}
+      className="bg-gray-100/70 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl p-3"
+    >
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+          {statusLabel(status)}
+        </h2>
+        <span className="text-xs text-gray-500 dark:text-gray-400">
+          {grouped[status].length}
+        </span>
+      </div>
+      <div
+        className={
+          layout === "grid"
+            ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2"
+            : "space-y-2"
+        }
+      >
+        {grouped[status].map(renderTaskCard)}
+        {grouped[status].length === 0 && (
+          <p className="text-[11px] text-gray-400 dark:text-gray-500 px-1 py-2">
+            Nothing here.
+          </p>
+        )}
+      </div>
+    </section>
+  );
 
   return (
     <MainContentArea
       title="Tasks"
-      actions={
-        <Button
-          variant="outline"
-          leftIcon={<FiFileText className="h-4 w-4" />}
-          onClick={() => setViewMode("documents")}
-        >
-          Documents
-        </Button>
+      inlineActions={
+        <>
+          <select
+            className={`${inputClass} w-40 max-w-full`}
+            value={statusFilter}
+            onChange={(event) =>
+              setStatusFilter(event.target.value as "all" | TaskStatus)
+            }
+          >
+            <option value="all">All statuses</option>
+            {STATUS_ORDER.map((status) => (
+              <option key={status} value={status}>
+                {statusLabel(status)}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs whitespace-nowrap text-gray-500 dark:text-gray-400">
+            {tasks.filter((t) => t.status !== "done").length} open ·{" "}
+            {tasks.length} total
+          </span>
+        </>
       }
     >
       <div className="w-full">
         <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 mb-3">
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-            <div className="sm:col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+            <div className="sm:col-span-4">
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
                 What needs to happen?
               </label>
@@ -322,69 +575,103 @@ const TasksPage: React.FC = () => {
                 }}
               />
             </div>
-            <div>
+            <div className="sm:col-span-3">
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                Area
+                Knowledge base tags
               </label>
-              <input
-                className={inputClass}
-                value={section}
-                onChange={(event) => setSection(event.target.value)}
-                list="task-sections"
-              />
-              <datalist id="task-sections">
-                {sections.map((name) => (
-                  <option key={name} value={name} />
-                ))}
-              </datalist>
+              <details className="relative">
+                <summary
+                  className={`${inputClass} cursor-pointer list-none truncate`}
+                >
+                  {taskEntityIds.length === 0
+                    ? "Tag records…"
+                    : `${taskEntityIds.length} record${
+                        taskEntityIds.length === 1 ? "" : "s"
+                      } tagged`}
+                </summary>
+                <div className="absolute z-30 mt-1 max-h-56 w-full overflow-auto rounded-md border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-600 dark:bg-gray-800">
+                  {knowledgeBase.length === 0 ? (
+                    <p className="px-1 py-2 text-[11px] text-gray-500 dark:text-gray-400">
+                      No knowledge base records yet.
+                    </p>
+                  ) : (
+                    knowledgeBase.map((group) => (
+                      <div key={group.key} className="mb-2 last:mb-0">
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                          {group.label}
+                        </p>
+                        <div className="space-y-1">
+                          {group.rows.map((row) => (
+                            <label
+                              key={row.id}
+                              className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={taskEntityIds.includes(row.id)}
+                                onChange={() => toggleDraftEntity(row.id)}
+                              />
+                              <span className="truncate">{row.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </details>
             </div>
-            <div>
+            <div className="sm:col-span-5">
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                Due
+                Due date
               </label>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <input
                   type="date"
-                  className={inputClass}
+                  className={`${inputClass} min-w-0 flex-1`}
                   value={due}
                   onChange={(event) => setDue(event.target.value)}
+                  aria-label="Due date"
+                  title="Due date"
                 />
-                <Button variant="primary" leftIcon={<FiPlus className="h-4 w-4" />} onClick={add}>
+                <label className="flex items-center gap-1 whitespace-nowrap text-[11px] text-gray-500 dark:text-gray-400">
+                  <input
+                    type="checkbox"
+                    checked={multiDue}
+                    onChange={(event) => {
+                      setMultiDue(event.target.checked);
+                      if (!event.target.checked) setDueEnd("");
+                    }}
+                  />
+                  Multiple dates
+                </label>
+                {multiDue && (
+                  <>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                      to
+                    </span>
+                    <input
+                      type="date"
+                      className={`${inputClass} min-w-0 flex-1`}
+                      value={dueEnd}
+                      min={due || undefined}
+                      onChange={(event) => setDueEnd(event.target.value)}
+                      aria-label="End date"
+                      title="End date"
+                    />
+                  </>
+                )}
+                <Button
+                  variant="primary"
+                  leftIcon={<FiPlus className="h-4 w-4" />}
+                  onClick={add}
+                >
                   Add
                 </Button>
               </div>
             </div>
           </div>
         </section>
-
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          <div className="relative flex-1 min-w-[200px]">
-            <FiSearch className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-            <input
-              className={`${inputClass} pl-9`}
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search tasks, areas, notes..."
-            />
-          </div>
-          <select
-            className={`${inputClass} max-w-[180px]`}
-            value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(event.target.value as "all" | TaskStatus)
-            }
-          >
-            <option value="all">All statuses</option>
-            {STATUS_ORDER.map((status) => (
-              <option key={status} value={status}>
-                {statusLabel(status)}
-              </option>
-            ))}
-          </select>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {tasks.filter((t) => t.status !== "done").length} open · {tasks.length} total
-          </span>
-        </div>
 
         {tasks.length === 0 ? (
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-8 text-center">
@@ -394,145 +681,11 @@ const TasksPage: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            {STATUS_ORDER.map((status) => (
-              <section
-                key={status}
-                className="bg-gray-100/70 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl p-3"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                    {statusLabel(status)}
-                  </h2>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {grouped[status].length}
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {grouped[status].map((task) => {
-                    const overdue =
-                      task.due && task.due < today && task.status !== "done";
-                    return (
-                      <article
-                        key={task.id}
-                        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3"
-                      >
-                        <div className="flex items-start gap-2">
-                          <button
-                            type="button"
-                            onClick={() => cycle(task)}
-                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusStyle(task.status)}`}
-                            title="Change status"
-                          >
-                            {statusLabel(task.status)}
-                          </button>
-                          <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-                            {task.section}
-                          </span>
-                          <button
-                            type="button"
-                            className="ml-auto text-gray-400 hover:text-red-500"
-                            onClick={() => deleteTask(task.id)}
-                            aria-label="Delete task"
-                          >
-                            <FiTrash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                        <h3 className="text-sm font-medium text-gray-900 dark:text-white mt-2">
-                          {task.title}
-                        </h3>
-                        {task.due && (
-                          <div className={`mt-1 flex items-center gap-1 text-[11px] ${overdue ? "text-red-600 dark:text-red-400" : "text-gray-500 dark:text-gray-400"}`}>
-                            <FiClock className="h-3 w-3" /> {task.due}
-                            {overdue ? " · overdue" : ""}
-                          </div>
-                        )}
-
-                        {Array.isArray(task.notes) && task.notes.length > 0 && (
-                          <ul className="mt-2 space-y-1">
-                            {task.notes.slice(-3).map((note, index) => (
-                              <li
-                                key={`${note.ts}-${index}`}
-                                className="text-[11px] text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 rounded px-2 py-1"
-                              >
-                                {note.text}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-
-                        <div className="mt-2 flex gap-1">
-                          <input
-                            className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-[11px] text-gray-900 dark:text-white"
-                            placeholder="Add a note"
-                            value={noteDrafts[task.id] || ""}
-                            onChange={(event) =>
-                              setNoteDrafts((prev) => ({
-                                ...prev,
-                                [task.id]: event.target.value,
-                              }))
-                            }
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") addNote(task);
-                            }}
-                          />
-                          <button
-                            type="button"
-                            className="text-[11px] text-blue-600 dark:text-blue-400"
-                            onClick={() => addNote(task)}
-                          >
-                            Save
-                          </button>
-                        </div>
-
-                        {documents.length > 0 && (
-                          <details className="mt-2">
-                            <summary className="text-[11px] text-gray-500 dark:text-gray-400 cursor-pointer">
-                              Documents ({task.documentIds.length})
-                            </summary>
-                            <div className="mt-1 max-h-28 overflow-auto space-y-1">
-                              {documents.map((doc) => (
-                                <label
-                                  key={doc.id}
-                                  className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={task.documentIds.includes(doc.id)}
-                                    onChange={() => toggleDocument(task, doc.id)}
-                                  />
-                                  <span className="truncate">{doc.name}</span>
-                                </label>
-                              ))}
-                            </div>
-                          </details>
-                        )}
-
-                        {task.documentIds.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => void downloadPack(task)}
-                            disabled={packingId === task.id}
-                            className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 disabled:opacity-50"
-                            title="Download a ZIP with a cover index and all documents attached to this task"
-                          >
-                            <FiDownload className="h-3 w-3" />
-                            {packingId === task.id
-                              ? "Preparing pack…"
-                              : "Document pack"}
-                          </button>
-                        )}
-                      </article>
-                    );
-                  })}
-                  {grouped[status].length === 0 && (
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500 px-1 py-2">
-                      Nothing here.
-                    </p>
-                  )}
-                </div>
-              </section>
-            ))}
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {ACTIVE_STATUS_ORDER.map((status) => renderColumn(status))}
+            </div>
+            {renderColumn("done", "grid")}
           </div>
         )}
       </div>

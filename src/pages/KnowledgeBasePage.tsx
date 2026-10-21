@@ -40,34 +40,20 @@ import KnowledgeBaseConsistencyChecker from "../components/KnowledgeBaseConsiste
 import EventRelationshipSankey from "../components/timeline/EventRelationshipSankey";
 import TimelineSelector from "../components/timeline/TimelineSelector";
 import { KnowledgeBaseSectionType, SingularEntityType } from "../types/ui";
-import { SourceDocumentType, ID } from "../types/project";
-import { CustomEntityType } from "../types/dynamicEntity";
+import { SourceDocumentType, ProjectType, ID } from "../types/project";
+import { CustomEntityType, GenericEntity } from "../types/dynamicEntity";
+import KnowledgeBaseCategoryManager from "../components/KnowledgeBaseCategoryManager";
+import {
+  BUILT_IN_KB_IDS,
+  LEGACY_FIELD_BY_SINGULAR,
+  LEGACY_ID_ALIAS,
+  knowledgeBaseEntitiesForSection,
+  resolveKnowledgeBaseSections,
+  sectionAliases,
+} from "../utils/knowledgeBaseCategories";
+import CustomEntityForm from "./CustomEntityForm";
 
 type EntityType = KnowledgeBaseSectionType | string;
-
-const LEGACY_ENTITY_TYPES: CustomEntityType[] = [
-  {
-    id: "characters",
-    name: "Character",
-    namePlural: "Characters",
-    icon: "FaUser",
-  },
-  {
-    id: "locations",
-    name: "Location",
-    namePlural: "Locations",
-    icon: "FaMapMarkerAlt",
-  },
-  {
-    id: "technologies",
-    name: "Technology",
-    namePlural: "Technologies",
-    icon: "FaMicrochip",
-  },
-  { id: "cultures", name: "Culture", namePlural: "Cultures", icon: "FaGlobe" },
-  { id: "sources", name: "Source", namePlural: "Sources", icon: "FaFileAlt" },
-  { id: "tags", name: "Tag", namePlural: "Tags", icon: "FaTags" },
-] as any;
 
 const iconMap: { [key: string]: React.ElementType } = {
   FaUser,
@@ -98,6 +84,9 @@ const KnowledgeBasePage: React.FC = () => {
     addSourceDocument,
     updateSourceDocument,
     deleteSourceDocument,
+    addGenericEntity,
+    updateGenericEntity,
+    deleteGenericEntity,
     getTimelineById,
   } = useProjectData();
 
@@ -138,33 +127,10 @@ const KnowledgeBasePage: React.FC = () => {
     return result;
   }, [project]);
 
-  const knowledgeBaseSections = useMemo(() => {
-    if (!project) {
-      return [];
-    }
-
-    const allSections = isDynamicProject
-      ? [
-          ...(project.entityTypes || []),
-          ...LEGACY_ENTITY_TYPES.filter(
-            (s) => s.id === "sources" || s.id === "tags",
-          ),
-        ]
-      : [...LEGACY_ENTITY_TYPES];
-
-    const uniqueSectionMap = new Map<string, CustomEntityType>();
-    allSections.forEach((section) => {
-      uniqueSectionMap.set(section.id, section);
-    });
-    const uniqueSections = Array.from(uniqueSectionMap.values());
-    const tagsSection = uniqueSections.find((s) => s.id === "tags");
-    const finalSections = uniqueSections.filter((s) => s.id !== "tags");
-    if (tagsSection) {
-      finalSections.push(tagsSection);
-    }
-
-    return finalSections;
-  }, [project, isDynamicProject]);
+  const knowledgeBaseSections = useMemo(
+    () => resolveKnowledgeBaseSections(project),
+    [project],
+  );
 
   const [currentSection, setCurrentSection] = useState<EntityType>(
     knowledgeBaseSections[0]?.id || "characters",
@@ -193,6 +159,7 @@ const KnowledgeBasePage: React.FC = () => {
   const [sortField, setSortField] = useState<"name" | "date">("name");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [expandedTag, setExpandedTag] = useState<string | null>(null);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
 
   useEffect(() => {
     if (project?.timelines?.length && !selectedTimelineId) {
@@ -202,152 +169,14 @@ const KnowledgeBasePage: React.FC = () => {
 
   const getEntityCountForSection = (sectionId: string): number => {
     if (!project) return 0;
-
-    if (sectionId === "tags") {
-      return tagStats.length;
-    }
-
-    if (sectionId === "sources") {
-      return (project.sources || project.sources || []).length;
-    }
-
-    if (isDynamicProject) {
-      let count = 0;
-
-      if (project.entities && project.entities.length > 0) {
-        count = project.entities.filter(
-          (e: any) => e.entityType === sectionId,
-        ).length;
-      }
-
-      if (count === 0) {
-        const legacyMapping: Record<string, keyof typeof project> = {
-          character: "characters",
-          location: "locations",
-          technology: "technologies",
-          culture: "cultures",
-          setting: "locations",
-          plot_device: "technologies",
-        };
-
-        const legacyKey = legacyMapping[sectionId];
-        if (legacyKey && project[legacyKey]) {
-          count = (project[legacyKey] as any[]).length;
-        }
-      }
-
-      return count;
-    }
-
-    switch (sectionId) {
-      case "characters":
-        return (project.characters || []).length;
-      case "locations":
-        return (project.locations || []).length;
-      case "technologies":
-        return (project.technologies || []).length;
-      case "cultures":
-        return (project.cultures || []).length;
-      default:
-        return 0;
-    }
+    if (sectionId === "tags") return tagStats.length;
+    return knowledgeBaseEntitiesForSection(project, sectionId).length;
   };
 
-  const entities = useMemo(() => {
-    if (!project) {
-      return [];
-    }
-
-    if (currentSection === "tags") {
-      return [];
-    }
-
-    if (currentSection === "sources") {
-      const sources = [...(project.sources || project.sources || [])];
-      return sources;
-    }
-
-    if (isDynamicProject) {
-      let dynamicEntities: any[] = [];
-      if (project.entities && project.entities.length > 0) {
-        const allEntityTypes =
-          project.entities.map((e: any) => e.entityType) || [];
-        const uniqueEntityTypes = [...new Set(allEntityTypes)];
-
-        dynamicEntities =
-          project.entities.filter(
-            (e: any) => e.entityType === currentSection,
-          ) || [];
-      }
-
-      if (dynamicEntities.length === 0) {
-        const legacyMapping: Record<string, keyof typeof project> = {
-          character: "characters",
-          location: "locations",
-          technology: "technologies",
-          culture: "cultures",
-          setting: "locations",
-          plot_device: "technologies",
-        };
-
-        const legacyKey = legacyMapping[currentSection];
-        if (legacyKey && project[legacyKey]) {
-          const legacyData = project[legacyKey] as any[];
-          return [...legacyData];
-        }
-      }
-
-      return dynamicEntities;
-    }
-
-    let legacyEntities: any[] = [];
-    switch (currentSection) {
-      case "characters":
-        legacyEntities = [...(project.characters || [])];
-        break;
-      case "locations":
-        legacyEntities = [...(project.locations || [])];
-        break;
-      case "technologies":
-        legacyEntities = [...(project.technologies || [])];
-        break;
-      case "cultures":
-        legacyEntities = [...(project.cultures || [])];
-        break;
-      default:
-        legacyEntities = [];
-    }
-
-    return legacyEntities;
-  }, [
-    project,
-    currentSection,
-    isDynamicProject,
-    project?.characters,
-    project?.locations,
-    project?.technologies,
-    project?.cultures,
-    project?.sources,
-    project?.entities,
-    project?.characters?.length,
-    project?.locations?.length,
-    project?.technologies?.length,
-    project?.cultures?.length,
-    project?.sources?.length,
-    project?.entities?.length,
-    refreshKey,
-  ]);
-
-  useEffect(() => {
-    setRefreshKey((prev) => prev + 1);
-  }, [
-    project?.characters?.length,
-    project?.locations?.length,
-    project?.technologies?.length,
-    project?.cultures?.length,
-    project?.sources?.length,
-    project?.entities?.length,
-  ]);
+  const entities = useMemo(
+    () => knowledgeBaseEntitiesForSection(project, currentSection),
+    [project, currentSection, refreshKey],
+  );
 
   const finalDisplayedEntities = useMemo(() => {
     let processedEntities = [...entities];
@@ -372,16 +201,20 @@ const KnowledgeBasePage: React.FC = () => {
           aValue = (a.name || a.title || "").toLowerCase();
           bValue = (b.name || b.title || "").toLowerCase();
           break;
-        case "date":
-          const dateFields: Record<string, keyof any> = {
+        case "date": {
+          const dateFields: Record<string, string> = {
+            character: "birthDate",
             characters: "birthDate",
+            culture: "foundedDate",
             cultures: "foundedDate",
+            source: "publicationDate",
             sources: "publicationDate",
           };
           const field = dateFields[currentSection as string] || "createdAt";
           aValue = a[field] || "9999";
           bValue = b[field] || "9999";
           break;
+        }
         default:
           aValue = (a.name || a.title || "").toLowerCase();
           bValue = (b.name || b.title || "").toLowerCase();
@@ -395,19 +228,8 @@ const KnowledgeBasePage: React.FC = () => {
 
   const getSingularEntityType = (
     section: EntityType = currentSection,
-  ): SingularEntityType | string => {
-    if (!isDynamicProject) {
-      const mapping: Record<string, SingularEntityType> = {
-        characters: "character",
-        locations: "location",
-        technologies: "technology",
-        cultures: "culture",
-        sources: "source",
-      };
-      return mapping[section as string] || section;
-    }
-    return section;
-  };
+  ): SingularEntityType | string =>
+    LEGACY_ID_ALIAS[section] || section;
 
   useEffect(() => {
     const editOrder = sessionStorage.getItem("editEntity");
@@ -434,7 +256,9 @@ const KnowledgeBasePage: React.FC = () => {
     if (viewMode === "knowledge-base") {
       const activeCategory =
         currentKnowledgeBaseCategory || knowledgeBaseSections[0]?.id;
-      if (activeCategory) setCurrentSection(activeCategory);
+      if (activeCategory) {
+        setCurrentSection(LEGACY_ID_ALIAS[activeCategory] || activeCategory);
+      }
       if (!editingEntityInfo && selectedKnowledgeBaseEntityId) {
         const entityToSelect = entities.find(
           (entity) => entity.id === selectedKnowledgeBaseEntityId,
@@ -569,8 +393,43 @@ const KnowledgeBasePage: React.FC = () => {
             ? "technology"
             : type;
 
+      const isCustomType = !BUILT_IN_KB_IDS.has(serviceType);
       let newEntityId: ID | null = null;
-      if (isEditing && originalData.id) {
+
+      if (isCustomType) {
+        if (isEditing && originalData.id) {
+          updateGenericEntity({
+            ...(originalData as GenericEntity),
+            ...formData,
+            id: originalData.id,
+            entityType: serviceType,
+            fields: {
+              ...(originalData.fields || {}),
+              ...(formData.fields || {}),
+            },
+            tags: formData.tags || originalData.tags || [],
+          } as GenericEntity);
+          newEntityId = originalData.id;
+          showSuccess(
+            `${getSingularLabel(type as EntityType)} updated successfully`,
+          );
+        } else {
+          newEntityId = addGenericEntity({
+            entityType: serviceType,
+            name: String(formData.name || "").slice(0, 200),
+            description: formData.description || "",
+            tags: Array.isArray(formData.tags) ? formData.tags : [],
+            sourceDocumentIds: [],
+            fields: formData.fields || {},
+            timelineIds: [],
+            linkedEventIds: [],
+            linkedNarrativeIds: [],
+          });
+          showSuccess(
+            `${getSingularLabel(type as EntityType)} created successfully`,
+          );
+        }
+      } else if (isEditing && originalData.id) {
         const payload = { ...formData, id: originalData.id };
         switch (serviceType) {
           case "character":
@@ -624,17 +483,12 @@ const KnowledgeBasePage: React.FC = () => {
           setRefreshKey((prev) => prev + 1);
 
           setTimeout(() => {
-            const sectionKey = isDynamicProject
-              ? "entities"
-              : (`${serviceType}s` as keyof typeof project);
-
-            let entityList: any[] = [];
-            if (isDynamicProject) {
-              entityList =
-                project?.entities?.filter((e: any) => e.entityType === type) ||
-                [];
-            } else {
-              entityList = (project?.[sectionKey] as any[]) || [];
+            const legacyKey = LEGACY_FIELD_BY_SINGULAR[serviceType];
+            let entityList: any[] = (project?.entities || []).filter(
+              (e: any) => e.entityType === type,
+            );
+            if (entityList.length === 0 && legacyKey) {
+              entityList = (project?.[legacyKey] as any[]) || [];
             }
 
             const savedEntity = entityList.find(
@@ -707,7 +561,10 @@ const KnowledgeBasePage: React.FC = () => {
           await deleteSourceDocument(data.id);
           break;
         default:
-          throw new Error(`Cannot delete unknown type: ${type}`);
+          if (BUILT_IN_KB_IDS.has(serviceType)) {
+            throw new Error(`Cannot delete unknown type: ${type}`);
+          }
+          deleteGenericEntity(data.id);
       }
       showSuccess(
         `${getSingularLabel(type as EntityType)} deleted successfully`,
@@ -783,8 +640,22 @@ const KnowledgeBasePage: React.FC = () => {
             </Button>
           </div>
         );
-      default:
+      default: {
+        const customType =
+          getCurrentSectionInfo(type) ||
+          getCurrentSectionInfo(currentSection);
+        if (customType) {
+          return (
+            <CustomEntityForm
+              entityType={customType}
+              initialData={data}
+              onSubmit={handleFormSubmit}
+              onCancel={handleFormCancel}
+            />
+          );
+        }
         return <p>No form available for entity type: {type}</p>;
+      }
     }
   };
 
@@ -865,6 +736,16 @@ const KnowledgeBasePage: React.FC = () => {
                   {showDetailsPanel ? "Hide Details" : "Show Details"}
                 </Button>
               )}
+            {!showRelationshipViewer && !editingEntityInfo && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCategoryManager(true)}
+                leftIcon={<FaCog className="h-4 w-4" />}
+              >
+                Categories
+              </Button>
+            )}
             {!showRelationshipViewer &&
               currentSection !== "tags" &&
               !editingEntityInfo && (
@@ -1365,6 +1246,12 @@ const KnowledgeBasePage: React.FC = () => {
           </div>
         </div>
       </Modal>
+      <KnowledgeBaseCategoryManager
+        isOpen={showCategoryManager}
+        onClose={() => setShowCategoryManager(false)}
+        sections={knowledgeBaseSections}
+      />
+
     </MainContentArea>
   );
 };

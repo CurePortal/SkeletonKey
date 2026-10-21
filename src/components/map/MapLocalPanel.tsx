@@ -222,7 +222,7 @@ const MapLocalPanel: React.FC<MapLocalPanelProps> = ({
     void refreshBeacon();
   };
 
-  const centerOn = (lat: number, lng: number, zoom = 14) => {
+  const centerOn = (lat: number, lng: number, zoom = 12) => {
     onCenterChange({ lat, lng });
     onZoomChange(zoom);
   };

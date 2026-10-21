@@ -54,6 +54,7 @@ export type ViewMode =
   | "map"
   | "knowledge-base"
   | "narrative"
+  | "flows-ideas"
   | "documents"
   | "tasks"
   | "notes"

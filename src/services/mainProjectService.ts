@@ -296,6 +296,12 @@ function normalizedProject(project: LooseProject): LooseProject {
     caseDocuments: Array.isArray(project.caseDocuments) ? project.caseDocuments : [],
     links: Array.isArray(project.links) ? project.links : [],
     fieldNotes: Array.isArray(project.fieldNotes) ? project.fieldNotes : [],
+    entityTypes: Array.isArray((project as any).entityTypes)
+      ? (project as any).entityTypes
+      : [],
+    entities: Array.isArray((project as any).entities)
+      ? (project as any).entities
+      : [],
     deletedIds: Array.isArray(project.deletedIds) ? project.deletedIds : [],
   };
 }
@@ -336,6 +342,7 @@ function collectProjectIds(project: LooseProject): Set<string> {
   add(project.cultures);
   add(project.sources);
   add(project.reports);
+  add((project as any).entities);
   for (const report of project.reports || []) add(report.scenes);
   add(project.tasks);
   add(project.caseDocuments);
@@ -667,6 +674,21 @@ export function mergeProjects(local: ProjectType, incoming: ProjectType): Projec
       a.caseDocuments || [],
       b.caseDocuments || [],
       (row: any) => String(row.id || row.name || ""),
+      combineEntity,
+    ),
+    tombstones,
+  );
+  out.entityTypes = mergeByKey(
+    (a as any).entityTypes || [],
+    (b as any).entityTypes || [],
+    (row: any) => String(row.id || row.name || "").toLowerCase(),
+    combineEntity,
+  );
+  out.entities = withoutDeleted(
+    mergeByKey(
+      (a as any).entities || [],
+      (b as any).entities || [],
+      (row: any) => String(row.id || `${row.entityType}|${row.name}`),
       combineEntity,
     ),
     tombstones,

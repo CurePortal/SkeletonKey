@@ -40,6 +40,7 @@ import {
   FaEdit,
   FaArrowLeft,
   FaStickyNote,
+  FaTasks,
 } from "react-icons/fa";
 
 import { useProjectData } from "../contexts/ProjectDataContext";
@@ -81,6 +82,11 @@ const ResourceNode: React.FC<{ data: any }> = ({ data }) => {
       style:
         "bg-indigo-100 border-indigo-400 text-indigo-800 dark:bg-indigo-900/50 dark:border-indigo-500 dark:text-indigo-200",
       icon: <FaUsers />,
+    },
+    Task: {
+      style:
+        "bg-teal-100 border-teal-400 text-teal-800 dark:bg-teal-900/50 dark:border-teal-500 dark:text-teal-200",
+      icon: <FaTasks />,
     },
     Source: {
       style:
@@ -240,7 +246,10 @@ const GenericNodeModal: React.FC<{
   );
 };
 
-const NarrativeBuilderPageInternal: React.FC = () => {
+const NarrativeBuilderPageInternal: React.FC<{
+  section: "narrative" | "flows";
+}> = ({ section }) => {
+  const isFlowsSection = section === "flows";
   const {
     project,
     addReport,
@@ -266,7 +275,9 @@ const NarrativeBuilderPageInternal: React.FC = () => {
   const [selectedNarrativeId, setSelectedNarrativeId] = useState<ID | null>(
     null,
   );
-  const [viewMode, setViewMode] = useState<"list" | "flow" | "notes">("list");
+  const [viewMode, setViewMode] = useState<"list" | "flow" | "notes">(
+    isFlowsSection ? "flow" : "list",
+  );
   const [sceneViewMode, setSceneViewMode] = useState<"list" | "view" | "edit">(
     "list",
   );
@@ -290,7 +301,9 @@ const NarrativeBuilderPageInternal: React.FC = () => {
   const [narrativeTitle, setNarrativeTitle] = useState("");
   const [narrativeDescription, setNarrativeDescription] = useState("");
   const [narrativeTimelineId, setNarrativeTimelineId] = useState<ID | "">("");
-  const [reportType, setNarrativeType] = useState<"linear" | "flow">(
+  const [reportType, setNarrativeType] = useState<
+    "linear" | "flow" | "note"
+  >(
     "linear",
   );
 
@@ -302,6 +315,16 @@ const NarrativeBuilderPageInternal: React.FC = () => {
       generic: GenericNode,
     }),
     [],
+  );
+
+  const sectionReports = useMemo(
+    () =>
+      (project?.reports || []).filter((report) =>
+        isFlowsSection
+          ? report.reportType === "flow" || report.reportType === "note"
+          : report.reportType !== "flow" && report.reportType !== "note",
+      ),
+    [project?.reports, isFlowsSection],
   );
 
   const selectedNarrative = useMemo(
@@ -493,28 +516,28 @@ const NarrativeBuilderPageInternal: React.FC = () => {
   };
 
   useEffect(() => {
-    if (
-      project?.reports &&
-      project.reports.length > 0 &&
-      !selectedNarrativeId
-    ) {
-      setSelectedNarrativeId(project.reports[0].id);
+    if (sectionReports.length > 0 && !selectedNarrativeId) {
+      setSelectedNarrativeId(sectionReports[0].id);
     }
-  }, [project?.reports, selectedNarrativeId]);
+  }, [sectionReports, selectedNarrativeId]);
 
   useEffect(() => {
     if (selectedNarrative) {
-      const isFlow = selectedNarrative.reportType === "flow";
-      // Don't automatically switch to flow view for flow narratives
-      // Let user control view mode
-      if (isFlow && viewMode === "list") {
+      if (isFlowsSection) {
+        setViewMode(
+          selectedNarrative.reportType === "note" ? "notes" : "flow",
+        );
+      } else {
+        setViewMode("list");
+      }
+      if (selectedNarrative.reportType === "flow") {
         setNodes(selectedNarrative.nodes || []);
         setEdges(selectedNarrative.edges || []);
       }
       setSceneViewMode("list");
       setSelectedSceneId(null);
     }
-  }, [selectedNarrative, setNodes, setEdges]);
+  }, [selectedNarrative, isFlowsSection, setNodes, setEdges]);
 
   const onConnect: OnConnect = useCallback(
     (params) => {
@@ -622,7 +645,7 @@ const NarrativeBuilderPageInternal: React.FC = () => {
     setNarrativeTitle("");
     setNarrativeDescription("");
     setNarrativeTimelineId("");
-    setNarrativeType("linear");
+    setNarrativeType(isFlowsSection ? "flow" : "linear");
     setIsNarrativeModalOpen(true);
   };
 
@@ -655,6 +678,7 @@ const NarrativeBuilderPageInternal: React.FC = () => {
         title: narrativeTitle,
         description: narrativeDescription,
         reportType,
+        content: "",
         scenes: [],
         nodes: [],
         edges: [],
@@ -1161,64 +1185,28 @@ const NarrativeBuilderPageInternal: React.FC = () => {
 
   return (
     <MainContentArea
-      title="Narrative Builder"
+      title={isFlowsSection ? "Flows & Ideas" : "Narrative Builder"}
       noPadding={true}
       actions={
-        selectedNarrative && (
-          <div className="flex items-center space-x-2">
-            <div className="flex items-center space-x-1 rounded-lg bg-gray-200 dark:bg-gray-700 p-1">
-              <button
-                onClick={() => setViewMode("list")}
-                className={`px-3 py-1 text-sm font-medium rounded-md flex items-center gap-2 ${
-                  viewMode === "list"
-                    ? "bg-white dark:bg-gray-800 shadow text-blue-600 dark:text-blue-300"
-                    : "text-gray-600 dark:text-gray-300"
-                }`}
-              >
-                <FaStream /> List
-              </button>
-              <button
-                onClick={() => setViewMode("flow")}
-                className={`px-3 py-1 text-sm font-medium rounded-md flex items-center gap-2 ${
-                  viewMode === "flow"
-                    ? "bg-white dark:bg-gray-800 shadow text-blue-600 dark:text-blue-300"
-                    : "text-gray-600 dark:text-gray-300"
-                }`}
-              >
-                <FaProjectDiagram /> Flow
-              </button>
-              <button
-                onClick={() => setViewMode("notes")}
-                className={`px-3 py-1 text-sm font-medium rounded-md flex items-center gap-2 ${
-                  viewMode === "notes"
-                    ? "bg-white dark:bg-gray-800 shadow text-blue-600 dark:text-blue-300"
-                    : "text-gray-600 dark:text-gray-300"
-                }`}
-              >
-                <FaStickyNote /> Notes
-              </button>
-            </div>
-            {viewMode === "flow" && (
-              <Button variant="primary" onClick={handleSaveFlow}>
-                Save Flow
-              </Button>
-            )}
-          </div>
-        )
+        isFlowsSection && selectedNarrative?.reportType === "flow" ? (
+          <Button variant="primary" onClick={handleSaveFlow}>
+            Save Flow
+          </Button>
+        ) : undefined
       }
     >
       <div className="h-full flex overflow-hidden bg-gray-50 dark:bg-gray-900">
         <div className="w-[320px] flex-shrink-0 bg-white dark:bg-gray-800 p-4 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full overflow-hidden">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Content Sections
+              {isFlowsSection ? "Flow sections" : "Stories & diary"}
             </h2>
             <Button size="sm" onClick={handleCreateNarrative}>
               New
             </Button>
           </div>
           <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-            {project?.reports.map((n) => {
+            {sectionReports.map((n) => {
               const isSelected = selectedNarrativeId === n.id;
               return (
                 <button
@@ -1261,7 +1249,11 @@ const NarrativeBuilderPageInternal: React.FC = () => {
                         isSelected ? "text-blue-200" : "text-gray-400"
                       }`}
                     >
-                      {n.reportType === "flow" ? "Flow Chart" : "Scene List"}
+                      {n.reportType === "flow"
+                        ? "Flow Chart"
+                        : n.reportType === "note"
+                          ? "Note"
+                          : "Story"}
                     </div>
                   </div>
                 </button>
@@ -1301,9 +1293,20 @@ const NarrativeBuilderPageInternal: React.FC = () => {
               </div>
 
               <div className="flex-1 overflow-hidden">
-                {viewMode === "notes" ? (
-                  <NotesApp project={project} />
-                ) : viewMode === "flow" ? (
+                {selectedNarrative.reportType === "note" ? (
+                  <NotesApp
+                    project={project}
+                    documentId={selectedNarrative.id}
+                    initialContent={selectedNarrative.content || ""}
+                    onContentChange={(content) =>
+                      updateReport({
+                        ...selectedNarrative,
+                        content,
+                        updatedAt: new Date().toISOString(),
+                      })
+                    }
+                  />
+                ) : selectedNarrative.reportType === "flow" ? (
                   renderFlowView()
                 ) : (
                   <div className="h-full overflow-y-auto p-6">
@@ -1315,15 +1318,20 @@ const NarrativeBuilderPageInternal: React.FC = () => {
               </div>
             </>
           ) : (
-            <div className="flex items-center justify-center h-full">
+            <div className="flex flex-col items-center justify-center gap-2 h-full">
               <p className="text-gray-500">
-                Select a content section from the left panel to begin.
+                {isFlowsSection
+                  ? "Create or select a flow section to begin."
+                  : "Create or select a story to begin."}
               </p>
+              <Button size="sm" onClick={handleCreateNarrative}>
+                New {isFlowsSection ? "flow" : "story"}
+              </Button>
             </div>
           )}
         </div>
 
-        {viewMode !== "notes" && (
+        {selectedNarrative?.reportType !== "note" && (
           <div className="w-80 flex-shrink-0 h-full overflow-hidden">
             <NarrativeResourcePanel onInsertResource={handleInsertResource} />
           </div>
@@ -1349,6 +1357,23 @@ const NarrativeBuilderPageInternal: React.FC = () => {
             as="textarea"
             rows={3}
           />
+          {isFlowsSection && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Type
+              </label>
+              <select
+                value={reportType}
+                onChange={(e) =>
+                  setNarrativeType(e.target.value as "flow" | "note")
+                }
+                className="w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md"
+              >
+                <option value="flow">Flow chart</option>
+                <option value="note">Note</option>
+              </select>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Associated Timeline
@@ -1364,19 +1389,6 @@ const NarrativeBuilderPageInternal: React.FC = () => {
                   {timeline.name}
                 </option>
               ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Format
-            </label>
-            <select
-              value={reportType}
-              onChange={(e) => setNarrativeType(e.target.value as any)}
-              className="w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md"
-            >
-              <option value="linear">List View (for scenes)</option>
-              <option value="flow">Flow View (for connections)</option>
             </select>
           </div>
         </div>
@@ -1456,9 +1468,15 @@ const NarrativeBuilderPageInternal: React.FC = () => {
   );
 };
 
-const NarrativeBuilderPage = () => (
+interface NarrativeBuilderPageProps {
+  section?: "narrative" | "flows";
+}
+
+const NarrativeBuilderPage: React.FC<NarrativeBuilderPageProps> = ({
+  section = "narrative",
+}) => (
   <ReactFlowProvider>
-    <NarrativeBuilderPageInternal />
+    <NarrativeBuilderPageInternal section={section} />
   </ReactFlowProvider>
 );
 

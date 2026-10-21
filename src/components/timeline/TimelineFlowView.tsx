@@ -11,6 +11,7 @@ import ConsistencyAnalysisPanel from "./ConsistencyAnalysisPanel";
 import TimelineDetailsPanel from "./TimelineDetailsPanel";
 import { useProjectData } from "../../contexts/ProjectDataContext";
 import DayGroupCard, { DayGroup } from "./DayGroupCard";
+import MonthGroupCard, { MonthGroup } from "./MonthGroupCard";
 import { useTimelineBranching } from "./TimelineBranchHandler";
 
 interface InternalEventType extends EventType {
@@ -48,12 +49,13 @@ const HORIZONTAL_SPACING = 350;
 const EVENT_CARD_WIDTH = 150;
 const DAY_CARD_WIDTH = 260;
 const DAY_CARD_HEIGHT = 92;
-const EVENT_SPACING = 210;
+const DAY_CARD_GAP = 32;
+const EVENT_SPACING = DAY_CARD_WIDTH + DAY_CARD_GAP;
 const BRANCH_VERTICAL_OFFSET = 120;
 const BRANCH_STAGGER_OFFSET = 120;
 
 const localDateKey = (dateString?: string): string => {
-  const parsed = dateString ? new Date(dateString) : new Date(NaN);
+  const parsed = dateString ? parseCalendarDate(dateString) : new Date(NaN);
   const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
     2,
@@ -74,6 +76,25 @@ const groupEventsByDay = (events: EventType[]): DayGroup[] => {
     .map(([key, rows]) => ({ key, events: rows }));
 };
 
+const groupDaysByMonth = (days: DayGroup[]): MonthGroup[] => {
+  const groups = new Map<string, MonthGroup>();
+  for (const day of days) {
+    const key = day.key.slice(0, 7);
+    const month = groups.get(key) || { key, days: [], events: [] };
+    month.days.push(day);
+    month.events.push(...day.events);
+    groups.set(key, month);
+  }
+  return [...groups.values()].sort((left, right) =>
+    left.key.localeCompare(right.key),
+  );
+};
+
+const currentMonthKey = (): string => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+};
+
 const TimelineFlowView: React.FC<TimelineFlowViewProps> = ({
   timelines,
   currentTimelineId,
@@ -92,6 +113,10 @@ const TimelineFlowView: React.FC<TimelineFlowViewProps> = ({
 
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const zoomRef = useRef(zoom);
+  const panRef = useRef(pan);
+  zoomRef.current = zoom;
+  panRef.current = pan;
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -129,6 +154,7 @@ const TimelineFlowView: React.FC<TimelineFlowViewProps> = ({
   >([]);
 
   const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
+  const [expandedMonthKey, setExpandedMonthKey] = useState<string | null>(null);
 
   const currentTimeline = useMemo(
     () => timelines.find((t) => t.id === currentTimelineId),
@@ -429,10 +455,29 @@ const TimelineFlowView: React.FC<TimelineFlowViewProps> = ({
           return dateA - dateB;
         });
         const dayGroups = groupEventsByDay(sortedEvents);
+        const months = groupDaysByMonth(dayGroups);
+        const thisMonth = currentMonthKey();
 
-        // Calculate timeline line width based on number of active days
+        type TimelineSlot =
+          | { kind: "day"; day: DayGroup }
+          | { kind: "month"; month: MonthGroup };
+
+        // The current and future months show individual day cards. Months
+        // that have already passed collapse into one expandable month card.
+        const slots: TimelineSlot[] = [];
+        for (const month of months) {
+          if (month.key < thisMonth) {
+            slots.push({ kind: "month", month });
+          } else {
+            for (const day of month.days) {
+              slots.push({ kind: "day", day });
+            }
+          }
+        }
+
+        // Calculate timeline line width based on number of rendered slots
         const timelineLineWidth = Math.max(
-          (dayGroups.length + 1) * EVENT_SPACING + 200,
+          (slots.length + 1) * EVENT_SPACING + 200,
           800,
         );
         maxUsedX = Math.max(
@@ -652,52 +697,103 @@ const TimelineFlowView: React.FC<TimelineFlowViewProps> = ({
         // Render one compact, expandable card per active day, plus a plus
         // button between days. Events inside the card stay individually
         // clickable, so nothing is lost by grouping.
-        dayGroups.forEach((group, dayIndex) => {
-          const dayX =
-            currentStartX + CARD_WIDTH + 80 + dayIndex * EVENT_SPACING;
-          const dayY = currentY + CARD_HEIGHT / 2 - DAY_CARD_HEIGHT / 2;
-          const isDayExpanded = expandedDayKey === group.key;
-          const isDaySelected = group.events.some(
-            (event) => selectedEvent?.id === event.id,
-          );
+        slots.forEach((slot, slotIndex) => {
+          const slotX =
+            currentStartX + CARD_WIDTH + 80 + slotIndex * EVENT_SPACING;
+          const slotY = currentY + CARD_HEIGHT / 2;
+          let suggestedDate: string | undefined;
 
-          for (const event of group.events) {
-            newEventPositions.set(event.id, {
-              x: dayX + DAY_CARD_WIDTH / 2,
-              y: currentY + CARD_HEIGHT / 2,
-            });
+          if (slot.kind === "day") {
+            const group = slot.day;
+            const dayStateKey = `${timeline.id}:${group.key}`;
+            const isDayExpanded = expandedDayKey === dayStateKey;
+            const isDaySelected = group.events.some(
+              (event) => selectedEvent?.id === event.id,
+            );
+
+            for (const event of group.events) {
+              newEventPositions.set(event.id, {
+                x: slotX + DAY_CARD_WIDTH / 2,
+                y: slotY,
+              });
+            }
+
+            eventCardsLayer.push(
+              <DayGroupCard
+                key={`${timeline.id}-day-${group.key}`}
+                group={group}
+                x={slotX}
+                y={slotY}
+                width={DAY_CARD_WIDTH}
+                height={DAY_CARD_HEIGHT}
+                isExpanded={isDayExpanded}
+                isSelected={isDaySelected}
+                timelineColor={bgColor}
+                onToggle={() => {
+                  setExpandedMonthKey(null);
+                  setExpandedDayKey((current) =>
+                    current === dayStateKey ? null : dayStateKey,
+                  );
+                }}
+                onEventClick={handleEventClick}
+                onEventRightClick={
+                  onEventRightClick
+                    ? (event, e) => onEventRightClick(event, e)
+                    : undefined
+                }
+                onBranchClick={handleBranchFromCard}
+                formatDate={formatDate}
+              />,
+            );
+            suggestedDate = group.key;
+          } else {
+            const month = slot.month;
+            const monthStateKey = `${timeline.id}:month:${month.key}`;
+            const isMonthExpanded = expandedMonthKey === monthStateKey;
+            const isMonthSelected = month.events.some(
+              (event) => selectedEvent?.id === event.id,
+            );
+
+            for (const event of month.events) {
+              newEventPositions.set(event.id, {
+                x: slotX + DAY_CARD_WIDTH / 2,
+                y: slotY,
+              });
+            }
+
+            eventCardsLayer.push(
+              <MonthGroupCard
+                key={`${timeline.id}-month-${month.key}`}
+                month={month}
+                x={slotX}
+                y={slotY}
+                width={DAY_CARD_WIDTH}
+                height={DAY_CARD_HEIGHT}
+                isExpanded={isMonthExpanded}
+                isSelected={isMonthSelected}
+                timelineColor={bgColor}
+                onToggle={() => {
+                  setExpandedDayKey(null);
+                  setExpandedMonthKey((current) =>
+                    current === monthStateKey ? null : monthStateKey,
+                  );
+                }}
+                onEventClick={handleEventClick}
+                onEventRightClick={
+                  onEventRightClick
+                    ? (event, e) => onEventRightClick(event, e)
+                    : undefined
+                }
+                onBranchClick={handleBranchFromCard}
+                formatDate={formatDate}
+              />,
+            );
+            suggestedDate = `${month.key}-01`;
           }
 
-          eventCardsLayer.push(
-            <DayGroupCard
-              key={`${timeline.id}-day-${group.key}`}
-              group={group}
-              x={dayX}
-              y={dayY}
-              width={DAY_CARD_WIDTH}
-              height={DAY_CARD_HEIGHT}
-              isExpanded={isDayExpanded}
-              isSelected={isDaySelected}
-              timelineColor={bgColor}
-              onToggle={(key) =>
-                setExpandedDayKey((current) =>
-                  current === key ? null : key,
-                )
-              }
-              onEventClick={handleEventClick}
-              onEventRightClick={
-                onEventRightClick
-                  ? (event, e) => onEventRightClick(event, e)
-                  : undefined
-              }
-              onBranchClick={handleBranchFromCard}
-              formatDate={formatDate}
-            />,
-          );
-
           const plusButtonX =
-            dayX + DAY_CARD_WIDTH + (EVENT_SPACING - DAY_CARD_WIDTH) / 2;
-          const eventSectionId = `${timeline.id}-addevent-${dayIndex + 1}`;
+            slotX + DAY_CARD_WIDTH + (EVENT_SPACING - DAY_CARD_WIDTH) / 2;
+          const eventSectionId = `${timeline.id}-addevent-${slotIndex + 1}`;
 
           plusButtonsLayer.push(
             <div
@@ -716,7 +812,7 @@ const TimelineFlowView: React.FC<TimelineFlowViewProps> = ({
                 if (timeline.id !== currentTimelineId) {
                   onTimelineSelect(timeline.id);
                 }
-                onAddEvent(timeline.id, group.key);
+                onAddEvent(timeline.id, suggestedDate);
               }}
             >
               <div
@@ -824,6 +920,7 @@ const TimelineFlowView: React.FC<TimelineFlowViewProps> = ({
       setHoveredTimeline,
       onEditTimeline,
       expandedDayKey,
+      expandedMonthKey,
     ],
   );
 
@@ -852,25 +949,61 @@ const TimelineFlowView: React.FC<TimelineFlowViewProps> = ({
     setDragStart(null);
   }, []);
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const scaleFactor = 0.05;
-    setZoom((prevZoom) =>
-      e.deltaY < 0
-        ? Math.min(2, prevZoom + scaleFactor)
-        : Math.max(0.1, prevZoom - scaleFactor),
-    );
-  }, []);
+  const applyZoom = useCallback(
+    (nextZoom: number, anchor?: { x: number; y: number }) => {
+      const clamped = Math.max(0.1, Math.min(2, nextZoom));
+      const currentZoom = zoomRef.current;
+      if (Math.abs(clamped - currentZoom) < 0.0001) return;
+
+      const rect = containerRef.current?.getBoundingClientRect();
+      const ax = anchor?.x ?? (rect ? rect.width / 2 : 0);
+      const ay = anchor?.y ?? (rect ? rect.height / 2 : 0);
+      const currentPan = panRef.current;
+      const contentX = (ax - currentPan.x) / currentZoom;
+      const contentY = (ay - currentPan.y) / currentZoom;
+
+      const nextPan = {
+        x: ax - contentX * clamped,
+        y: ay - contentY * clamped,
+      };
+      zoomRef.current = clamped;
+      panRef.current = nextPan;
+      setZoom(clamped);
+      setPan(nextPan);
+    },
+    [],
+  );
+
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      e.preventDefault();
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      // Scale by the actual wheel delta so trackpads move gently and mouse
+      // wheels take one predictable step, anchored under the pointer.
+      const factor = Math.min(
+        1.25,
+        Math.max(0.8, Math.exp(-e.deltaY * 0.0012)),
+      );
+      applyZoom(zoomRef.current * factor, {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      });
+    },
+    [applyZoom],
+  );
 
   const handleZoomIn = useCallback(() => {
-    setZoom(Math.min(2, zoom + 0.1));
-  }, [zoom]);
+    applyZoom(zoomRef.current * 1.15);
+  }, [applyZoom]);
 
   const handleZoomOut = useCallback(() => {
-    setZoom(Math.max(0.1, zoom - 0.1));
-  }, [zoom]);
+    applyZoom(zoomRef.current / 1.15);
+  }, [applyZoom]);
 
   const handleResetView = useCallback(() => {
+    zoomRef.current = 1;
+    panRef.current = { x: 0, y: 0 };
     setZoom(1);
     setPan({ x: 0, y: 0 });
   }, []);
@@ -947,7 +1080,7 @@ const TimelineFlowView: React.FC<TimelineFlowViewProps> = ({
       width: renderResults.maxX + 200,
       height: maxY + 200,
     });
-  }, [timelineTree, renderTimelines, addTimelineButtonY, expandedDayKey]);
+  }, [timelineTree, renderTimelines, addTimelineButtonY, expandedDayKey, expandedMonthKey]);
   return (
     <div className="relative w-full h-full flex">
       <div
@@ -958,6 +1091,10 @@ const TimelineFlowView: React.FC<TimelineFlowViewProps> = ({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
+        onClick={() => {
+          setExpandedDayKey(null);
+          setExpandedMonthKey(null);
+        }}
       >
         <div
           className="absolute"

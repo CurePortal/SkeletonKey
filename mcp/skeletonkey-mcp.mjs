@@ -97,7 +97,7 @@ function ensureProjectShape(project) {
     timeline.branchFromEventId = timeline.branchFromEventId ?? null;
     timeline.tags = Array.isArray(timeline.tags) ? timeline.tags : [];
   }
-  for (const key of ["characters", "locations", "technologies", "cultures", "sourceDocuments", "narratives", "reports", "tasks", "caseDocuments", "links", "fieldNotes"]) {
+  for (const key of ["characters", "locations", "technologies", "cultures", "sourceDocuments", "narratives", "reports", "tasks", "caseDocuments", "links", "fieldNotes", "entityTypes", "entities"]) {
     out[key] = Array.isArray(out[key]) ? out[key] : [];
   }
   out.deletedIds = Array.isArray(out.deletedIds) ? out.deletedIds.map(String) : [];
@@ -141,6 +141,97 @@ function findLocation(value) {
     project.locations.find((location) => location.name.toLowerCase() === text.toLowerCase()) ||
     null
   );
+}
+
+const BUILT_IN_KB_TYPE_IDS = new Set([
+  "character",
+  "location",
+  "technology",
+  "culture",
+  "source",
+  "tags",
+]);
+
+function kbTypeId(name) {
+  return String(name || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+function upsertEntityType(input) {
+  const name = String(input.name || "").trim();
+  if (!name) throw new Error("entity type name is required");
+  const id = String(input.id || kbTypeId(name)).trim();
+  if (!id) throw new Error("entity type id is required");
+  const existing = (project.entityTypes || []).find((row) => row.id === id);
+  const type = {
+    ...(existing || {}),
+    id,
+    name,
+    namePlural:
+      String(input.namePlural || "").trim() || existing?.namePlural || `${name}s`,
+    description: input.description ?? existing?.description ?? "",
+    icon: input.icon || existing?.icon || "FaBook",
+    color: input.color || existing?.color || "#3B82F6",
+    fields: Array.isArray(input.fields)
+      ? input.fields
+      : Array.isArray(existing?.fields)
+        ? existing.fields
+        : [],
+    canHaveTimeline:
+      input.canHaveTimeline ?? existing?.canHaveTimeline ?? false,
+    canHaveLocation:
+      input.canHaveLocation ?? existing?.canHaveLocation ?? false,
+    canHaveNarratives:
+      input.canHaveNarratives ?? existing?.canHaveNarratives ?? false,
+  };
+  project.entityTypes = [
+    ...(project.entityTypes || []).filter((row) => row.id !== id),
+    type,
+  ];
+  return type;
+}
+
+function upsertGenericEntity(input) {
+  const entityType = String(input.entityType || "").trim();
+  const name = String(input.name || "").trim();
+  if (!entityType) throw new Error("entityType is required");
+  if (!name) throw new Error("entity name is required");
+  const existing = (project.entities || []).find(
+    (row) =>
+      row.entityType === entityType &&
+      String(row.name || "").trim().toLowerCase() === name.toLowerCase(),
+  );
+  const stamp = now();
+  const row = {
+    ...(existing || {}),
+    id: existing?.id || uid(),
+    entityType,
+    name: name.slice(0, 200),
+    description: String(input.description ?? existing?.description ?? ""),
+    tags: Array.isArray(input.tags)
+      ? input.tags.slice(0, 50)
+      : Array.isArray(existing?.tags)
+        ? existing.tags
+        : [],
+    sourceDocumentIds: Array.isArray(existing?.sourceDocumentIds)
+      ? existing.sourceDocumentIds
+      : [],
+    fields:
+      input.fields && typeof input.fields === "object"
+        ? { ...(existing?.fields || {}), ...input.fields }
+        : existing?.fields || {},
+    createdAt: existing?.createdAt || stamp,
+    updatedAt: stamp,
+  };
+  project.entities = [
+    ...(project.entities || []).filter((item) => item.id !== row.id),
+    row,
+  ];
+  return row;
 }
 
 function upsertLocation(input) {
@@ -288,6 +379,169 @@ function appendNarrativeScene(timeline, row, label = "HQ") {
   });
   report.updatedAt = now();
   return report;
+}
+
+function recordTaskCompletion(task) {
+  const mainTimeline =
+    (project.timelines || []).find((row) => row.isMainTimeline) ||
+    (project.timelines || [])[0];
+  if (!mainTimeline) return null;
+  if (
+    (mainTimeline.events || []).some(
+      (event) =>
+        Array.isArray(event.tags) && event.tags.includes(`task:${task.id}`),
+    )
+  ) {
+    return null;
+  }
+  const event = {
+    id: uid(),
+    title: `Completed: ${String(task.title || "").slice(0, 190)}`,
+    description: task.due
+      ? `Task completed. Due ${task.due}${
+          task.dueEnd && task.dueEnd !== task.due
+            ? ` to ${task.dueEnd}`
+            : ""
+        }.`
+      : "Task completed.",
+    date: day(),
+    endDate: null,
+    timelineId: mainTimeline.id,
+    importance: 2,
+    iconId: "default",
+    causes: [],
+    effects: [],
+    linkedCharacterIds: [],
+    linkedLocationIds: [],
+    linkedTechnologyIds: [],
+    linkedCultureIds: [],
+    linkedSourceDocumentIds: [],
+    linkedNarrativeIds: [],
+    notes: "Auto-recorded when the task was marked done.",
+    tags: ["task", "completed", `task:${task.id}`],
+    isPointOfDivergence: false,
+  };
+  mainTimeline.events = [...(mainTimeline.events || []), event];
+  return event;
+}
+
+function upsertTask(input) {
+  const title = String(input.title || "").trim();
+  if (!title) throw new Error("task title is required");
+  const list = Array.isArray(project.tasks) ? project.tasks : (project.tasks = []);
+  const existing = input.id
+    ? list.find((row) => row.id === input.id)
+    : list.find(
+        (row) =>
+          String(row.title || "").trim().toLowerCase() === title.toLowerCase(),
+      );
+  const previousStatus = existing?.status;
+  const stamp = now();
+  const status = ["todo", "doing", "blocked", "done"].includes(input.status)
+    ? input.status
+    : existing?.status || "todo";
+  const row = {
+    ...(existing || {}),
+    id: existing?.id || input.id || uid(),
+    title: title.slice(0, 200),
+    section: input.section || existing?.section || "General",
+    status,
+    due: input.due ?? existing?.due ?? "",
+    dueEnd: input.dueEnd ?? existing?.dueEnd,
+    notes: Array.isArray(input.notes)
+      ? input.notes
+      : Array.isArray(existing?.notes)
+        ? existing.notes
+        : [],
+    documentIds: Array.isArray(input.documentIds)
+      ? input.documentIds
+      : Array.isArray(existing?.documentIds)
+        ? existing.documentIds
+        : [],
+    linkedEntityIds: Array.isArray(input.linkedEntityIds)
+      ? input.linkedEntityIds
+      : Array.isArray(existing?.linkedEntityIds)
+        ? existing.linkedEntityIds
+        : [],
+    createdAt: existing?.createdAt || stamp,
+    updatedAt: stamp,
+  };
+  if (existing) {
+    const index = list.findIndex((item) => item.id === existing.id);
+    list[index] = row;
+  } else {
+    list.push(row);
+  }
+  if (previousStatus !== "done" && row.status === "done") {
+    recordTaskCompletion(row);
+  }
+  return row;
+}
+
+function upsertReport(input) {
+  const title = String(input.title || "").trim();
+  if (!title) throw new Error("report title is required");
+  const list = Array.isArray(project.reports)
+    ? project.reports
+    : Array.isArray(project.narratives)
+      ? project.narratives
+      : (project.reports = []);
+  const existing = input.id
+    ? list.find((row) => row.id === input.id)
+    : list.find(
+        (row) =>
+          String(row.title || "").trim().toLowerCase() === title.toLowerCase(),
+      );
+  const reportType = ["linear", "flow", "note"].includes(input.reportType)
+    ? input.reportType
+    : existing?.reportType || "linear";
+  const timeline = timelineByName(input.timeline);
+  const stamp = now();
+  const row = {
+    ...(existing || {}),
+    id: existing?.id || input.id || uid(),
+    title: title.slice(0, 200),
+    description: input.description ?? existing?.description ?? "",
+    reportType,
+    content: input.content ?? existing?.content ?? "",
+    scenes: Array.isArray(input.scenes)
+      ? input.scenes
+      : Array.isArray(existing?.scenes)
+        ? existing.scenes
+        : [],
+    nodes: Array.isArray(input.nodes)
+      ? input.nodes
+      : Array.isArray(existing?.nodes)
+        ? existing.nodes
+        : [],
+    edges: Array.isArray(input.edges)
+      ? input.edges
+      : Array.isArray(existing?.edges)
+        ? existing.edges
+        : [],
+    timelineId: input.timeline ? timeline.id : existing?.timelineId || null,
+    characterIds: Array.isArray(input.characterIds)
+      ? input.characterIds
+      : Array.isArray(existing?.characterIds)
+        ? existing.characterIds
+        : [],
+    tags: Array.isArray(input.tags)
+      ? input.tags.slice(0, 50)
+      : Array.isArray(existing?.tags)
+        ? existing.tags
+        : [],
+    createdAt: existing?.createdAt || stamp,
+    updatedAt: stamp,
+  };
+  if (existing) {
+    const index = list.findIndex((item) => item.id === existing.id);
+    list[index] = row;
+  } else {
+    list.push(row);
+  }
+  project.reports = list;
+  project.narratives = list;
+  return row;
 }
 
 function addEvent(input) {
@@ -519,6 +773,78 @@ server.registerTool(
 );
 
 server.registerTool(
+  "skeleton_kb_types",
+  {
+    title: "List knowledge base categories",
+    description:
+      "List the custom and renamed knowledge base categories stored in the project. Read-only.",
+    inputSchema: {},
+  },
+  async () => ({
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          {
+            builtIn: [...BUILT_IN_KB_TYPE_IDS],
+            categories: project.entityTypes || [],
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  }),
+);
+
+server.registerTool(
+  "skeleton_kb_type_upsert",
+  {
+    title: "Create or rename a knowledge base category",
+    description:
+      "Create a custom knowledge base category, or rename/re-icon an existing one by id (use the built-in ids character, location, technology, culture, source). Changes state; ask first.",
+    inputSchema: {
+      id: z.string().optional().describe("Category id; defaults to a slug of name"),
+      name: z.string().describe("Singular name"),
+      namePlural: z.string().optional().describe("Tab label"),
+      description: z.string().optional(),
+      icon: z.string().optional().describe("e.g. FaBook, FaUser, FaLightbulb"),
+      color: z.string().optional(),
+      fields: z.array(z.any()).optional(),
+      canHaveTimeline: z.boolean().optional(),
+      canHaveLocation: z.boolean().optional(),
+      canHaveNarratives: z.boolean().optional(),
+    },
+  },
+  async (input) => {
+    const type = upsertEntityType(input);
+    save();
+    return { content: [{ type: "text", text: JSON.stringify(type, null, 2) }] };
+  },
+);
+
+server.registerTool(
+  "skeleton_kb_entity_upsert",
+  {
+    title: "Add or update an entity in a knowledge base category",
+    description:
+      "Create or update an entry in a custom or built-in knowledge base category. Upserts by entityType + name. Changes state; ask first.",
+    inputSchema: {
+      entityType: z.string().describe("Category id, e.g. client or character"),
+      name: z.string(),
+      description: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      fields: z.record(z.string(), z.any()).optional(),
+    },
+  },
+  async (input) => {
+    const entity = upsertGenericEntity(input);
+    save();
+    return { content: [{ type: "text", text: JSON.stringify(entity, null, 2) }] };
+  },
+);
+
+server.registerTool(
   "skeleton_location_upsert",
   {
     title: "Add or update a location",
@@ -579,6 +905,58 @@ server.registerTool(
         },
       ],
     };
+  },
+);
+
+server.registerTool(
+  "skeleton_report_upsert",
+  {
+    title: "Create or edit a story, flow chart, or note",
+    description:
+      "Create or update a Narrative Builder story, a Flows & Ideas flow chart, or a note. Use reportType flow for flow charts and note for notes. Changes state; ask first.",
+    inputSchema: {
+      id: z.string().optional(),
+      title: z.string(),
+      description: z.string().optional(),
+      reportType: z.enum(["linear", "flow", "note"]).optional(),
+      content: z.string().optional().describe("Note body"),
+      timeline: z.string().optional(),
+      scenes: z.array(z.any()).optional(),
+      nodes: z.array(z.any()).optional(),
+      edges: z.array(z.any()).optional(),
+      characterIds: z.array(z.string()).optional(),
+      tags: z.array(z.string()).optional(),
+    },
+  },
+  async (input) => {
+    const report = upsertReport(input);
+    save();
+    return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };
+  },
+);
+
+server.registerTool(
+  "skeleton_task_upsert",
+  {
+    title: "Create or edit a task",
+    description:
+      "Create or update a task, including multi-day due ranges and linked knowledge base records. A completion timeline event is written only when the task transitions to done. Changes state; ask first.",
+    inputSchema: {
+      id: z.string().optional(),
+      title: z.string(),
+      status: z.enum(["todo", "doing", "blocked", "done"]).optional(),
+      section: z.string().optional(),
+      due: z.string().optional().describe("YYYY-MM-DD"),
+      dueEnd: z.string().optional().describe("Optional end date"),
+      linkedEntityIds: z.array(z.string()).optional(),
+      documentIds: z.array(z.string()).optional(),
+      notes: z.array(z.any()).optional(),
+    },
+  },
+  async (input) => {
+    const task = upsertTask(input);
+    save();
+    return { content: [{ type: "text", text: JSON.stringify(task, null, 2) }] };
   },
 );
 
@@ -759,6 +1137,30 @@ server.registerTool(
   async () => ({ content: [{ type: "text", text: JSON.stringify(project, null, 2) }] }),
 );
 
+function runProjectAction(action) {
+  const kind = String(action?.kind || action?.action || "").trim();
+  const args =
+    action?.args && typeof action.args === "object" ? action.args : {};
+  switch (kind) {
+    case "task.upsert":
+      return upsertTask(args);
+    case "report.upsert":
+      return upsertReport(args);
+    case "kb.type.upsert":
+      return upsertEntityType(args);
+    case "kb.entity.upsert":
+      return upsertGenericEntity(args);
+    case "event.add":
+      return addEvent(args);
+    case "character.upsert":
+      return upsertCharacter(args);
+    case "location.upsert":
+      return upsertLocation(args);
+    default:
+      throw new Error(`unknown project action: ${kind || "(empty)"}`);
+  }
+}
+
 // --- HTTP bridge for the app -------------------------------------------------
 function jsonResponse(res, code, body) {
   const text = JSON.stringify(body);
@@ -810,6 +1212,35 @@ const http = createServer(async (req, res) => {
       project = ensureProjectShape(incoming);
       save();
       return jsonResponse(res, 200, status());
+    }
+    if (req.method === "POST" && url.pathname === "/actions") {
+      const body = JSON.parse(await readBody(req));
+      const actions = Array.isArray(body?.actions)
+        ? body.actions
+        : body?.kind || body?.action
+          ? [body]
+          : [];
+      if (!actions.length) {
+        return jsonResponse(res, 400, { error: "No actions supplied." });
+      }
+      const results = [];
+      for (const action of actions) {
+        try {
+          results.push({
+            ok: true,
+            kind: action.kind || action.action,
+            result: runProjectAction(action),
+          });
+        } catch (error) {
+          results.push({
+            ok: false,
+            kind: action.kind || action.action,
+            error: String(error?.message || error),
+          });
+        }
+      }
+      save();
+      return jsonResponse(res, 200, { ok: true, results });
     }
     return jsonResponse(res, 404, { error: "unknown endpoint" });
   } catch (error) {

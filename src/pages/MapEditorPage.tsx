@@ -24,7 +24,11 @@ import {
 import EnhancedKMZImportModal from "../components/common/KMZImportModal";
 import EnhancedMapDisplay from "./MapDisplay";
 import MapLocalPanel from "../components/map/MapLocalPanel";
-import type { BeaconPosition, GeoRoute } from "../services/mapIntelligenceService";
+import {
+  findPlaces,
+  type BeaconPosition,
+  type GeoRoute,
+} from "../services/mapIntelligenceService";
 import RichTextEditor from "../components/common/RichTextEditor";
 
 import {
@@ -120,14 +124,43 @@ const IntegratedGlobalSearch: React.FC<{
 
     setIsSearching(true);
     try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          query,
-        )}&limit=8&addressdetails=1&accept-language=en`,
-      );
-      const data = await response.json();
-      setSearchResults(data);
-      setIsOpen(data.length > 0);
+      // Prefer the same local gazetteer the right-hand panel uses, so both
+      // searches return consistent places. Fall back to Nominatim for
+      // locations outside the offline dataset.
+      let results: any[] = [];
+      try {
+        const local = await findPlaces(query.trim(), 8);
+        results = local.map((place) => ({
+          lat: String(place.lat),
+          lon: String(place.lon),
+          name: place.name,
+          display_name: [place.name, place.subcat || place.category]
+            .filter(Boolean)
+            .join(", "),
+          type: place.category,
+          class: place.subcat,
+          distanceM: place.distanceM,
+          source: "gazetteer",
+        }));
+      } catch {
+        results = [];
+      }
+
+      if (results.length === 0) {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+            query,
+          )}&limit=8&addressdetails=1&accept-language=en`,
+        );
+        const data = await response.json();
+        results = (Array.isArray(data) ? data : []).map((row: any) => ({
+          ...row,
+          source: "osm",
+        }));
+      }
+
+      setSearchResults(results);
+      setIsOpen(results.length > 0);
       setSelectedIndex(-1);
     } catch (error) {
       console.error("Error searching location:", error);
@@ -199,10 +232,11 @@ const IntegratedGlobalSearch: React.FC<{
   const handleResultSelect = (result: any) => {
     const lat = parseFloat(result.lat);
     const lng = parseFloat(result.lon);
-    const name = result.display_name.split(",")[0] || result.display_name;
+    const name =
+      result.name || result.display_name.split(",")[0] || result.display_name;
 
     onLocationSelect({ lat, lng }, name, result);
-    onViewChange?.({ lat, lng }, 13);
+    onViewChange?.({ lat, lng }, 12);
     setIsOpen(false);
     setSelectedIndex(-1);
   };
@@ -335,11 +369,18 @@ const IntegratedGlobalSearch: React.FC<{
                     <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                       {formatDisplayName(result.display_name)}
                     </div>
-                    {result.type && (
+                    {result.source === "gazetteer" ? (
+                      <div className="text-xs text-gray-400 dark:text-gray-500 mt-1 capitalize">
+                        Local gazetteer · {result.type}
+                        {result.distanceM != null
+                          ? ` · ${Math.round(result.distanceM)} m`
+                          : ""}
+                      </div>
+                    ) : result.type ? (
                       <div className="text-xs text-gray-400 dark:text-gray-500 mt-1 capitalize">
                         {result.type} {result.class && `• ${result.class}`}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                   <div className="flex flex-col gap-2 ml-3 flex-shrink-0">
                     <button
@@ -1349,7 +1390,8 @@ const EnhancedMapEditorPage: React.FC = () => {
     fullResult: any,
   ) => {
     setCenter(coords);
-    setZoom(13);
+    setZoom(12);
+    setFocusPoint({ lat: coords.lat, lng: coords.lng, name });
     setFocusedLocationId(null);
     showSuccess(`Mapped to ${name}`);
   };
@@ -1368,7 +1410,9 @@ const EnhancedMapEditorPage: React.FC = () => {
     const lat = parseFloat(searchResult.lat);
     const lng = parseFloat(searchResult.lon);
     const name =
-      searchResult.display_name.split(",")[0] || searchResult.display_name;
+      searchResult.name ||
+      searchResult.display_name.split(",")[0] ||
+      searchResult.display_name;
 
     const newLocationData = {
       name,
@@ -1658,7 +1702,7 @@ const EnhancedMapEditorPage: React.FC = () => {
         lat: location.coordinates.lat,
         lng: location.coordinates.lng,
       });
-      setZoom(12);
+      setZoom(10);
       setFocusedLocationId(location.id);
     }
   };

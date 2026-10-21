@@ -246,8 +246,10 @@ export interface TaskType {
   section: string;
   status: TaskStatus;
   due: string;
+  dueEnd?: string;
   notes: TaskNote[];
   documentIds: ID[];
+  linkedEntityIds?: ID[];
   createdAt: string;
   updatedAt: string;
 }
@@ -313,7 +315,8 @@ export interface ReportType {
   tags: string[];
   createdAt: string;
   updatedAt: string;
-  reportType: "linear" | "flow"; // Changed from narrativeType
+  reportType: "linear" | "flow" | "note";
+  content?: string;
   nodes: FlowNodeType[];
   edges: Edge[];
 }

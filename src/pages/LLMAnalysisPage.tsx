@@ -8,6 +8,11 @@ import ChatMessageBubble from "../components/LLM/ChatMessageBubble";
 import MainContentArea from "../components/layout/MainContentArea";
 import { checkOllamaStatus } from "../services/ollamaService";
 import {
+  hqPullProject,
+  runHqActions,
+} from "../services/hqBridgeService";
+import { mergeProjects } from "../services/mainProjectService";
+import {
   LLM_PROVIDERS,
   getModel,
   getProvider,
@@ -30,6 +35,93 @@ interface AnalysisChatInputInterfaceProps {
   disabled?: boolean;
   placeholder?: string;
 }
+
+interface AssistantTask {
+  label: string;
+  hint: string;
+  prompt: string;
+}
+
+const ASSISTANT_TASKS: AssistantTask[] = [
+  {
+    label: "Shift brief",
+    hint: "What matters right now",
+    prompt:
+      "Give me a tight shift brief from this record: what is open, what is overdue, what is new or unreviewed, any recent activity, and the three things I should handle first. Keep it operational and short.",
+  },
+  {
+    label: "What's next",
+    hint: "Prioritised action list",
+    prompt:
+      "Based on open tasks, deadlines, documents, and recent events, give me a prioritised action list for today. For each item: the next concrete step, who or what it depends on, and the deadline risk.",
+  },
+  {
+    label: "Task triage",
+    hint: "Clean up the task list",
+    prompt:
+      "Triage the open tasks: flag blockers, duplicates, stale items, and anything that should be done next. Suggest missing tasks implied by the record, but do not invent facts. Recommend status changes where clear.",
+  },
+  {
+    label: "Follow-ups",
+    hint: "Loose ends and promises",
+    prompt:
+      "Find loose ends in this record: unanswered questions, promises, deadlines, and events with no follow-up. Turn each into a concrete follow-up action with the records involved.",
+  },
+  {
+    label: "Document sweep",
+    hint: "What needs reading or review",
+    prompt:
+      "Review the document list. Tell me which are unreviewed or new, what each likely needs, which to read first, and what task or follow-up each implies. Do not guess at contents you cannot see.",
+  },
+  {
+    label: "Look up a person",
+    hint: "Brief on a person or org",
+    prompt:
+      "I need a lookup. If I named a person or organisation above, brief me on them from the record: role, involvement, related events and places, open questions, and linked tasks. If no name is given, ask me who. Do not invent details.",
+  },
+  {
+    label: "Look up a place",
+    hint: "Brief on a location",
+    prompt:
+      "I need a lookup. If I named a place above, brief me on it from the record: what it is, who and what is connected, events there, access or risk notes, and linked tasks. If no place is given, ask me which. Do not invent details.",
+  },
+  {
+    label: "Gap check",
+    hint: "What the record is missing",
+    prompt:
+      "Compare timelines, tasks, and documents. List the gaps that matter operationally: missing records, missing steps, missing dates, and things referenced but not logged. For each gap, say what to add or verify next.",
+  },
+  {
+    label: "Draft status update",
+    hint: "Short update for the record",
+    prompt:
+      "Draft a short status update from this record: what is done, what is blocked, what is next, and what needs a decision from me. Plain language, no speculation, no filler.",
+  },
+];
+
+const AssistantTaskButtons: React.FC<{
+  onAction: (prompt: string) => void;
+  disabled?: boolean;
+}> = ({ onAction, disabled }) => (
+  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+    {ASSISTANT_TASKS.map((task) => (
+      <button
+        key={task.label}
+        type="button"
+        disabled={disabled}
+        onClick={() => onAction(task.prompt)}
+        className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-3 py-2 text-left transition-colors hover:border-indigo-400 hover:bg-indigo-50 dark:hover:border-indigo-500 dark:hover:bg-indigo-900/20 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <span className="block text-sm font-medium text-gray-800 dark:text-gray-100">
+          {task.label}
+        </span>
+        <span className="block text-[11px] text-gray-500 dark:text-gray-400">
+          {task.hint}
+        </span>
+      </button>
+    ))}
+  </div>
+);
 
 // Chat input component
 const AnalysisChatInputInterface: React.FC<AnalysisChatInputInterfaceProps> = ({
@@ -59,7 +151,7 @@ const AnalysisChatInputInterface: React.FC<AnalysisChatInputInterfaceProps> = ({
             if (!disabled) handleSubmit();
           }
         }}
-        placeholder={placeholder || "Ask a question about your project..."}
+        placeholder={placeholder || "Ask for a brief, a lookup, or a tasking plan..."}
         disabled={disabled}
         className="flex-grow p-2.5 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:opacity-70 disabled:cursor-not-allowed resize-none"
         rows={Math.max(2, Math.min(5, inputValue.split("\n").length))}
@@ -102,15 +194,16 @@ const AINotAvailableMessage: React.FC = () => (
 );
 
 const LLMAnalysisPage: React.FC = () => {
-  const { project } = useProjectData();
+  const { project, setProject, currentFilePath } = useProjectData();
   const {
     response: llmResponse,
     loading: llmLoading,
     error: llmError,
-    analyzeData,
+    proposeActions,
     reset: resetLLMAnalysis,
   } = useLLMAnalysis();
 
+  const [assistantBusy, setAssistantBusy] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [modelCheckStatus, setModelCheckStatus] = useState<
@@ -153,7 +246,10 @@ const LLMAnalysisPage: React.FC = () => {
 
 
   const chatInputDisabled =
-    llmLoading || !hasProject || modelCheckStatus !== "available";
+    assistantBusy ||
+    llmLoading ||
+    !hasProject ||
+    modelCheckStatus !== "available";
 
   const getPlaceholderText = () => {
     if (modelCheckStatus === "checking") return "Checking AI model availability...";
@@ -163,7 +259,7 @@ const LLMAnalysisPage: React.FC = () => {
     if (llmLoading) return "AI is analyzing...";
     if (!hasProject) return "Load or create a project to start AI analysis...";
 
-    return `Ask a question (using ${LLM_PROVIDERS[getProvider()].short})...`;
+    return `Ask for a brief, lookup, or task (using ${LLM_PROVIDERS[getProvider()].short})...`;
   };
 
   const addMessageHelper = (
@@ -269,10 +365,56 @@ const LLMAnalysisPage: React.FC = () => {
       id: loadingId,
       sender: "ai",
       type: "loading",
-      content: "Analyzing your project data...",
+      content: "Working the record...",
     });
 
-    analyzeData(project, userInputText, "analysis");
+    setAssistantBusy(true);
+    try {
+      const plan = await proposeActions(project, userInputText);
+      let outcome = "";
+      if (plan.actions.length > 0) {
+        const response = await runHqActions(plan.actions);
+        const applied = response.results.filter((row) => row.ok).length;
+        const failed = response.results.filter((row) => !row.ok);
+        outcome = `\n\nApplied ${applied} of ${plan.actions.length} change(s).`;
+        if (failed.length > 0) {
+          outcome += ` Failed: ${failed
+            .map((row) => `${row.kind || "action"} — ${row.error || "error"}`)
+            .join("; ")}`;
+        }
+        try {
+          const incoming = await hqPullProject();
+          if (incoming) {
+            setProject(
+              mergeProjects(project, incoming),
+              currentFilePath,
+              false,
+            );
+          }
+        } catch {
+          outcome += " Changes are saved to HQ and will sync shortly.";
+        }
+      }
+      addMessageHelper({
+        id: loadingId,
+        sender: "ai",
+        type: "text",
+        content: `${plan.reply}${outcome}`,
+      });
+    } catch (error) {
+      addMessageHelper({
+        id: loadingId,
+        sender: "system",
+        type: "error",
+        content: `Assistant error: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        details:
+          "The assistant could not reach the local MCP or the selected AI provider.",
+      });
+    } finally {
+      setAssistantBusy(false);
+    }
   };
 
   const handleClearChat = () => {
@@ -315,7 +457,7 @@ const LLMAnalysisPage: React.FC = () => {
                   </div>
                 )}
                 <h3 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">
-                  AI Project Analysis
+                  HQ Assistant
                 </h3>
                 <p className="text-md text-gray-600 dark:text-gray-400 max-w-xl">
                   {hasProject
@@ -342,6 +484,15 @@ const LLMAnalysisPage: React.FC = () => {
 
           {/* Input Area */}
           <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+            <div className="mb-3">
+              <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Assistant tasks
+              </h4>
+              <AssistantTaskButtons
+                onAction={handleSendMessage}
+                disabled={chatInputDisabled}
+              />
+            </div>
             <AnalysisChatInputInterface
               onSendMessage={handleSendMessage}
               disabled={chatInputDisabled}
@@ -355,7 +506,7 @@ const LLMAnalysisPage: React.FC = () => {
   };
 
   return (
-    <MainContentArea title="AI Project Analysis">
+    <MainContentArea title="HQ Assistant">
       <div className="flex flex-col h-full">{renderContent()}</div>
     </MainContentArea>
   );

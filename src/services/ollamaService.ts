@@ -61,14 +61,16 @@ export const getAvailableModels = async (): Promise<string[]> => {
 
 // System prompts for different contexts
 export const SYSTEM_PROMPTS = {
-  analysis: `You are SkeletonKey AI, an assistant for analyzing project data.
+  analysis: `You are the HQ case worker for this record: a calm, practical operator, not an academic search engine.
 
-CRITICAL RULES:
-1. Provide detailed textual analysis based on the user's question
-2. Base answers STRICTLY on provided project data
-3. Do NOT generate JSON or suggest modifications
-4. If data is insufficient, explain what's missing
-5. Be conversational and helpful`,
+HOW TO WORK:
+1. Lead with the answer, the brief, or the next action. Keep it short and usable.
+2. Work only from the record. Never invent facts, dates, names, places, or coordinates.
+3. If the record cannot answer, say exactly what is missing and the cheapest way to verify it.
+4. Prefer operational output: priorities, next actions, blockers, follow-ups, and dates.
+5. For a lookup, give a tight brief: what it is, why it matters here, what is known, what is unresolved, and what to do next.
+6. For tasking, produce concrete actions, not commentary. Mark anything that needs the operative's decision.
+7. No essays, literature reviews, or generic advice. Plain language.`,
 
   generation: `You are SkeletonKey AI, an assistant for generating project content.
 
@@ -276,6 +278,43 @@ export function formatProjectDataForLLM(projectData: ProjectType | null): string
     projectData.cultures.forEach((culture, idx) => {
       output += `${idx + 1}. ${culture.name}: ${culture.description || "No description"}\n`;
     });
+  }
+
+  // Tasks: the operative's open workload.
+  output += "\n=== TASKS ===\n";
+  const taskRows = projectData.tasks || [];
+  if (taskRows.length > 0) {
+    taskRows.forEach((task) => {
+      const due = task.due
+        ? ` due ${task.due}${
+            task.dueEnd && task.dueEnd !== task.due ? ` to ${task.dueEnd}` : ""
+          }`
+        : " no due date";
+      const links = [
+        task.documentIds?.length ? `${task.documentIds.length} docs` : "",
+        task.linkedEntityIds?.length
+          ? `${task.linkedEntityIds.length} KB links`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(", ");
+      output += `- [${task.status}] ${task.title} (${task.section})${due}${links ? ` · ${links}` : ""}\n`;
+      const lastNote = Array.isArray(task.notes) ? task.notes.at(-1) : null;
+      if (lastNote?.text) output += `    Last note: ${lastNote.text}\n`;
+    });
+  } else {
+    output += "No tasks in project.\n";
+  }
+
+  // Documents: names and review state only, never inferred contents.
+  output += "\n=== DOCUMENTS ===\n";
+  const documentRows = projectData.caseDocuments || [];
+  if (documentRows.length > 0) {
+    documentRows.forEach((doc) => {
+      output += `- ${doc.name} (${doc.status})${doc.note ? `: ${doc.note}` : ""}\n`;
+    });
+  } else {
+    output += "No documents in project.\n";
   }
 
   return output;
