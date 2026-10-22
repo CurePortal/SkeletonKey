@@ -81,7 +81,12 @@
           }
         },
         "deepseek-v4.1-flash": {
-          "name": "DeepSeek 4.1 Flash (via your relay/provider)"
+          "name": "DeepSeek 4.1 Flash (via your relay/provider)",
+          "attachment": true,
+          "modalities": {
+            "input": ["text", "image", "pdf"],
+            "output": ["text"]
+          }
         }
       }
     },
@@ -94,7 +99,12 @@
       },
       "models": {
         "deepseek-v4.1-flash": {
-          "name": "DeepSeek 4.1 Flash"
+          "name": "DeepSeek 4.1 Flash",
+          "attachment": true,
+          "modalities": {
+            "input": ["text", "image", "pdf"],
+            "output": ["text"]
+          }
         }
       }
     }
