@@ -94,10 +94,10 @@ const SettingsPage: React.FC = () => {
   );
 
   const [financeLedger, setFinanceLedger] = useState(
-    project?.financeSettings?.ledgerFile || "~/beancount/main.beancount",
+    project?.financeSettings?.ledgerFile || "~/Documents/SkeletonKey/finances/main.beancount",
   );
   const [financeFava, setFinanceFava] = useState(
-    project?.financeSettings?.favaUrl || "http://127.0.0.1:5000",
+    project?.financeSettings?.favaUrl || "http://127.0.0.1:5001",
   );
   const [financeStatus, setFinanceStatus] = useState<
     "unknown" | "checking" | "reachable" | "unreachable"
@@ -704,7 +704,7 @@ const SettingsPage: React.FC = () => {
             Point SkeletonKey at a Beancount ledger and its local Fava server.
             The Beancount MCP (<code>mcp-beancount</code>) can read the same
             file for agents. Start Fava with{" "}
-            <code>~/.local/bin/beancount-server</code>.
+            <code>npm run beancount</code>.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -715,7 +715,7 @@ const SettingsPage: React.FC = () => {
                 className={inputClass}
                 value={financeLedger}
                 onChange={(event) => setFinanceLedger(event.target.value)}
-                placeholder="~/beancount/main.beancount"
+                placeholder="~/Documents/SkeletonKey/finances/main.beancount"
               />
             </div>
             <div>
@@ -726,7 +726,7 @@ const SettingsPage: React.FC = () => {
                 className={inputClass}
                 value={financeFava}
                 onChange={(event) => setFinanceFava(event.target.value)}
-                placeholder="http://127.0.0.1:5000"
+                placeholder="http://127.0.0.1:5001"
               />
             </div>
           </div>

@@ -15,7 +15,8 @@
     "beacon": "node sousveillance/server/beacond.mjs",
     "raven": "node sousveillance/server/raven.mjs",
     "crypto": "node integrations/crypto-watch/mcp-server.mjs",
-    "crypto-watch": "python3 integrations/crypto-watch/crypto-watch"
+    "crypto-watch": "python3 integrations/crypto-watch/crypto-watch",
+    "beancount": "bash tools/beancount-server.sh"
   },
   "dependencies": {
     "@heroicons/react": "v1",

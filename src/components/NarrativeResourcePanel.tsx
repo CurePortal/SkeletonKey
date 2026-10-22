@@ -226,17 +226,17 @@ const NarrativeResourcePanel: React.FC<NarrativeResourcePanelProps> = ({
   );
 
   return (
-    <div className="w-full h-full p-4 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex-shrink-0">
+    <div className="w-full h-full p-2.5 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col">
+      <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2 flex-shrink-0">
         Project Resources
       </h3>
-      <div className="mb-4 flex-shrink-0">
+      <div className="mb-2 flex-shrink-0">
         <input
           type="text"
           placeholder="Search resources..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full px-3 py-2 rounded-md bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-2 py-1.5 text-sm rounded-md bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
       <div className="flex-1 overflow-y-auto space-y-4 pr-2 -mr-2">

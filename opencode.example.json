@@ -59,7 +59,7 @@
       ],
       "enabled": true,
       "environment": {
-        "BEANCOUNT_FILE": "/ABS/PATH/TO/Documents/SkeletonKey/finances.beancount"
+        "BEANCOUNT_FILE": "/ABS/PATH/TO/Documents/SkeletonKey/finances/main.beancount"
       }
     }
   },

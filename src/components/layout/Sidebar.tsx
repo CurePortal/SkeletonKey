@@ -201,23 +201,22 @@ const Sidebar: React.FC = () => {
 
   const collapsedNav = [
     { view: "dashboard", label: "Overview", icon: <FaThLarge className="h-5 w-5" /> },
-    { view: "profile", label: "My Profile", icon: <FaIdCard className="h-5 w-5" /> },
     { view: "tasks", label: "Tasks", icon: <FaTasks className="h-5 w-5" /> },
     { view: "map", label: "Maps & Tracking", icon: <FaMap className="h-5 w-5" /> },
     { view: "documents", label: "Documents", icon: <FaFileAlt className="h-5 w-5" /> },
-    { view: "assets", label: "Personal Assets", icon: <FaBoxOpen className="h-5 w-5" /> },
+    { view: "assets", label: "Assets", icon: <FaBoxOpen className="h-5 w-5" /> },
     { view: "finances", label: "Finances", icon: <FaWallet className="h-5 w-5" /> },
     { view: "knowledge-base", label: "Knowledge Base", icon: <FaBookOpen className="h-5 w-5" /> },
     { view: "narrative", label: "Narrative", icon: <FaPenSquare className="h-5 w-5" /> },
     {
       view: "flows-ideas",
-      label: "Flows & Ideas",
+      label: "Flows & Notes",
       icon: <FaProjectDiagram className="h-5 w-5" />,
     },
     { view: "timeline", label: "Timeline", icon: <FaStream className="h-5 w-5" /> },
     {
       view: "ai-analysis",
-      label: "AI Analysis",
+      label: "Chat with HQ",
       icon: <LuBrainCircuit className="h-5 w-5" />,
     },
   ] as const;
@@ -307,16 +306,6 @@ const Sidebar: React.FC = () => {
                   }}
                 />
                 <NavItem
-                  label="My Profile"
-                  icon={<FaIdCard className="h-5 w-5" />}
-                  isActive={viewMode === "profile"}
-                  onClick={() => {
-                    setViewMode("profile");
-                    setCurrentKnowledgeBaseCategory(null);
-                    setSelectedKnowledgeBaseEntityId(null);
-                  }}
-                />
-                <NavItem
                   label="Tasks"
                   icon={<FaTasks className="h-5 w-5" />}
                   isActive={viewMode === "tasks"}
@@ -347,7 +336,7 @@ const Sidebar: React.FC = () => {
                   }}
                 />
                 <NavItem
-                  label="Personal Assets"
+                  label="Assets"
                   icon={<FaBoxOpen className="h-5 w-5" />}
                   isActive={viewMode === "assets"}
                   onClick={() => {
@@ -387,7 +376,7 @@ const Sidebar: React.FC = () => {
                   }}
                 />
                 <NavItem
-                  label="Flows & Ideas"
+                  label="Flows & Notes"
                   icon={<FaProjectDiagram className="h-5 w-5" />}
                   isActive={viewMode === "flows-ideas"}
                   onClick={() => {
@@ -408,7 +397,7 @@ const Sidebar: React.FC = () => {
                   badge={project.timelines?.length || 0}
                 />
                 <NavItem
-                  label="AI Analysis"
+                  label="Chat with HQ"
                   icon={
                     <LuBrainCircuit className="h-5 w-5 inline-block rotate-90" />
                   }
@@ -559,7 +548,22 @@ const Sidebar: React.FC = () => {
             </>
           )}
         </nav>
-        <div className="px-2 py-2 border-t border-gray-200 dark:border-gray-700">
+        <div className="px-2 py-2 border-t border-gray-200 dark:border-gray-700 space-y-0.5">
+          <button
+            className={`w-full flex items-center px-2.5 py-1.5 text-[13px] rounded-md ${
+              viewMode === "profile"
+                ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+            }`}
+            onClick={() => {
+              setViewMode("profile");
+              setCurrentKnowledgeBaseCategory(null);
+              setSelectedKnowledgeBaseEntityId(null);
+            }}
+          >
+            <FaIdCard className="h-5 w-5 mr-2" />
+            My Profile
+          </button>
           <button
             className="w-full flex items-center px-2.5 py-1.5 text-[13px] text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
             onClick={() => {

@@ -99,6 +99,31 @@ export interface HqActionResponse {
   }>;
 }
 
+export interface BeancountStatus {
+  ok: boolean;
+  favaUrl: string;
+  root: string;
+  ledgerFile: string;
+}
+
+export function beancountStatus(): Promise<BeancountStatus> {
+  return request<BeancountStatus>("/beancount/status", {}, 10000);
+}
+
+export function beancountReport(
+  report: "balance_sheet" | "income_statement",
+): Promise<any> {
+  return request<any>(`/beancount/${report}`, {}, 20000);
+}
+
+export function beancountQuery(query: string): Promise<any> {
+  return request<any>(
+    `/beancount/query?query_string=${encodeURIComponent(query)}`,
+    {},
+    20000,
+  );
+}
+
 export function runHqActions(
   actions: HqProjectAction[],
 ): Promise<HqActionResponse> {

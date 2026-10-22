@@ -457,7 +457,7 @@ const LLMAnalysisPage: React.FC = () => {
                   </div>
                 )}
                 <h3 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">
-                  HQ Assistant
+                  Chat with HQ
                 </h3>
                 <p className="text-md text-gray-600 dark:text-gray-400 max-w-xl">
                   {hasProject
@@ -506,7 +506,7 @@ const LLMAnalysisPage: React.FC = () => {
   };
 
   return (
-    <MainContentArea title="HQ Assistant">
+    <MainContentArea title="Chat with HQ">
       <div className="flex flex-col h-full">{renderContent()}</div>
     </MainContentArea>
   );

@@ -1421,6 +1421,46 @@ server.registerTool(
   async () => ({ content: [{ type: "text", text: JSON.stringify(project, null, 2) }] }),
 );
 
+function favaBase() {
+  return String(
+    project.financeSettings?.favaUrl ||
+      process.env.FAVA_URL ||
+      "http://127.0.0.1:5001",
+  ).replace(/\/$/, "");
+}
+
+async function favaRoot() {
+  const base = favaBase();
+  try {
+    const response = await fetch(`${base}/`, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(8000),
+    });
+    const segment = new URL(response.url).pathname.split("/").filter(Boolean)[0];
+    return segment ? `${base}/${segment}` : base;
+  } catch {
+    return base;
+  }
+}
+
+async function favaApi(path) {
+  const root = await favaRoot();
+  const response = await fetch(`${root}/api/${path}`, {
+    signal: AbortSignal.timeout(15000),
+  });
+  const text = await response.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text.slice(0, 400) };
+  }
+  if (!response.ok) {
+    throw new Error(data?.error || `Fava HTTP ${response.status}`);
+  }
+  return data;
+}
+
 function runProjectAction(action) {
   const kind = String(action?.kind || action?.action || "").trim();
   const args =
@@ -1502,6 +1542,36 @@ const http = createServer(async (req, res) => {
       project = ensureProjectShape(incoming);
       save();
       return jsonResponse(res, 200, status());
+    }
+    if (req.method === "GET" && url.pathname === "/beancount/status") {
+      const root = await favaRoot();
+      return jsonResponse(res, 200, {
+        ok: true,
+        favaUrl: favaBase(),
+        root,
+        ledgerFile:
+          project.financeSettings?.ledgerFile ||
+          process.env.BEANCOUNT_FILE ||
+          "~/Documents/SkeletonKey/finances/main.beancount",
+      });
+    }
+    if (
+      req.method === "GET" &&
+      (url.pathname === "/beancount/balance_sheet" ||
+        url.pathname === "/beancount/income_statement")
+    ) {
+      const report = url.pathname.endsWith("balance_sheet")
+        ? "balance_sheet"
+        : "income_statement";
+      return jsonResponse(res, 200, await favaApi(report));
+    }
+    if (req.method === "GET" && url.pathname === "/beancount/query") {
+      const query = url.searchParams.get("query_string") || "";
+      return jsonResponse(
+        res,
+        200,
+        await favaApi(`query?query_string=${encodeURIComponent(query)}`),
+      );
     }
     if (req.method === "POST" && url.pathname === "/actions") {
       const body = JSON.parse(await readBody(req));

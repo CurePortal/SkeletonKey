@@ -449,17 +449,17 @@ SkeletonKey expects a local Beancount ledger and a Fava server, both optional:
 
 ```bash
 # 1. Create a ledger directory (or use an existing one)
-mkdir -p ~/beancount
-cd ~/beancount
+mkdir -p ~/Documents/SkeletonKey/finances
+cd ~/Documents/SkeletonKey/finances
 python3 -m venv .venv
 . .venv/bin/activate
 pip install beancount fava mcp-beancount
 
 # 2. Point the app at the ledger in Settings → Finances, or set:
-export BEANCOUNT_FILE="$HOME/beancount/main.beancount"
+export BEANCOUNT_FILE="$HOME/Documents/SkeletonKey/finances/main.beancount"
 
-# 3. Start Fava (serves 127.0.0.1:5000)
-~/.local/bin/beancount-server
+# 3. Start Fava (serves 127.0.0.1:5001)
+npm run beancount
 ```
 
 The bundled MCP wiring includes a `beancount-skeletonkey` instance in

@@ -146,7 +146,7 @@ const PersonalAssetsPage: React.FC = () => {
 
   return (
     <MainContentArea
-      title="Personal Assets"
+      title="Assets"
       inlineActions={
         <span className="text-xs text-gray-500 dark:text-gray-400">
           {assets.length} item{assets.length === 1 ? "" : "s"} ·{" "}

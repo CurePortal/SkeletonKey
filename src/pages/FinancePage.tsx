@@ -8,6 +8,11 @@ import {
   FinanceSourceType,
 } from "../types/project";
 import {
+  beancountReport,
+  beancountStatus,
+  type BeancountStatus,
+} from "../services/hqBridgeService";
+import {
   readCryptoWatcherConfig,
   watcherChain,
   writeCryptoWatcherAddress,
@@ -19,35 +24,82 @@ import {
   FiRefreshCw,
   FiTrash2,
   FiEdit2,
+  FiLock,
 } from "react-icons/fi";
 
 const inputClass =
   "w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500";
 
-const DEFAULT_LEDGER = "~/beancount/main.beancount";
-const DEFAULT_FAVA = "http://127.0.0.1:5000";
-const DEFAULT_MCP = "~/.local/bin/beancount-server";
-
-const KINDS: FinanceSourceKind[] = [
-  "beancount",
-  "stripe",
-  "crypto",
-  "bank",
-  "manual",
-  "other",
+const KIND_OPTIONS: Array<{
+  value: Exclude<FinanceSourceKind, "beancount">;
+  label: string;
+  needsKey?: boolean;
+}> = [
+  { value: "crypto", label: "Crypto wallet" },
+  { value: "stripe", label: "Stripe API", needsKey: true },
+  { value: "bank", label: "Bank / API", needsKey: true },
+  { value: "manual", label: "Manual ledger" },
+  { value: "other", label: "Other API", needsKey: true },
 ];
 
 const emptyDraft = () => ({
   name: "",
-  kind: "other" as FinanceSourceKind,
+  kind: "crypto" as Exclude<FinanceSourceKind, "beancount">,
   status: "active" as FinanceSourceType["status"],
   ledgerAccount: "",
   envVar: "",
   reference: "",
   chain: "",
+  apiKey: "",
   notes: "",
   tags: "",
 });
+
+const secretKey = (id: string) => `sk-finance-secret:${id}`;
+
+const readSecret = (id: string) => {
+  try {
+    return localStorage.getItem(secretKey(id)) || "";
+  } catch {
+    return "";
+  }
+};
+
+const writeSecret = (id: string, value: string) => {
+  try {
+    if (value) localStorage.setItem(secretKey(id), value);
+    else localStorage.removeItem(secretKey(id));
+  } catch {
+    // Storage failures are non-fatal.
+  }
+};
+
+const numeric = (value: any): number => {
+  if (value == null) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(/,/g, ""));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value === "object") {
+    return numeric(value.number ?? value.amount ?? value.value ?? 0);
+  }
+  return 0;
+};
+
+const sumBalance = (balance: any): number => {
+  if (!balance) return 0;
+  if (Array.isArray(balance)) {
+    return balance.reduce((sum, row) => sum + numeric(row), 0);
+  }
+  return Object.values(balance).reduce(
+    (sum: number, row) => sum + numeric(row),
+    0,
+  );
+};
+
+const findTree = (trees: any[], accountPrefix: string): any | null =>
+  (trees || []).find((node) => node.account === accountPrefix) || null;
 
 const FinancePage: React.FC = () => {
   const {
@@ -55,136 +107,147 @@ const FinancePage: React.FC = () => {
     addFinanceSource,
     updateFinanceSource,
     deleteFinanceSource,
-    updateFinanceSettings,
   } = useProjectData();
   const { showSuccess, showError, showInfo } = useNotification();
 
-  const settings = project?.financeSettings;
-  const [ledgerFile, setLedgerFile] = useState(
-    settings?.ledgerFile || DEFAULT_LEDGER,
+  const [tab, setTab] = useState<"dashboard" | "books" | "sources">(
+    "dashboard",
   );
-  const [favaUrl, setFavaUrl] = useState(settings?.favaUrl || DEFAULT_FAVA);
-  const [favaStatus, setFavaStatus] = useState<
-    "checking" | "reachable" | "unreachable"
-  >("checking");
-  const [tab, setTab] = useState<"beancount" | "sources">("beancount");
+  const [status, setStatus] = useState<BeancountStatus | null>(null);
+  const [statusError, setStatusError] = useState("");
+  const [balanceSheet, setBalanceSheet] = useState<any>(null);
+  const [incomeStatement, setIncomeStatement] = useState<any>(null);
+  const [watcherConfig, setWatcherConfig] = useState<WatcherConfig>({});
   const [draft, setDraft] = useState(emptyDraft);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [watcherConfig, setWatcherConfig] = useState<WatcherConfig>({});
 
   const sources = useMemo(
     () => project?.financeSources || [],
     [project?.financeSources],
   );
 
-  useEffect(() => {
-    setLedgerFile(settings?.ledgerFile || DEFAULT_LEDGER);
-    setFavaUrl(settings?.favaUrl || DEFAULT_FAVA);
-  }, [settings?.ledgerFile, settings?.favaUrl]);
-
-  const checkFava = async () => {
-    setFavaStatus("checking");
+  const loadFinance = async () => {
+    setStatusError("");
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 4000);
-      await fetch(favaUrl, {
-        mode: "no-cors",
-        signal: controller.signal,
-        cache: "no-store",
-      });
-      clearTimeout(timer);
-      setFavaStatus("reachable");
-    } catch {
-      setFavaStatus("unreachable");
+      const nextStatus = await beancountStatus();
+      setStatus(nextStatus);
+      const [bs, is] = await Promise.all([
+        beancountReport("balance_sheet").catch(() => null),
+        beancountReport("income_statement").catch(() => null),
+      ]);
+      setBalanceSheet(bs);
+      setIncomeStatement(is);
+    } catch (error) {
+      setStatus(null);
+      setStatusError(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   };
 
   useEffect(() => {
+    void loadFinance();
     void readCryptoWatcherConfig().then(setWatcherConfig);
   }, []);
 
   useEffect(() => {
-    void checkFava();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [favaUrl]);
+    const config = watcherConfig || {};
+    const existing = project?.financeSources || [];
+    for (const [chainKey, address] of Object.entries(config)) {
+      const chain = watcherChain(chainKey);
+      if (!chain || !address) continue;
+      const alreadyTracked = existing.some(
+        (source) =>
+          watcherChain(source.chain || source.name) === chain &&
+          source.reference.trim().toLowerCase() ===
+            String(address).trim().toLowerCase(),
+      );
+      if (alreadyTracked) continue;
+      addFinanceSource({
+        name: `${chain.toUpperCase()} wallet`,
+        kind: "crypto",
+        status: "active",
+        ledgerAccount: `Assets:Crypto:${chain.toUpperCase()}`,
+        envVar: "",
+        reference: String(address).trim(),
+        chain: chain.toUpperCase(),
+        notes: "Imported automatically from the crypto watcher config.",
+        tags: ["watcher"],
+        lastSync: "",
+      });
+    }
+  }, [watcherConfig, project?.financeSources, addFinanceSource]);
 
-  const saveSettings = () => {
-    updateFinanceSettings({ ledgerFile, favaUrl });
-    showSuccess("Finance settings saved.");
-    void checkFava();
-  };
+  const totals = useMemo(() => {
+    const trees = balanceSheet?.data?.trees || [];
+    const assets = findTree(trees, "Assets");
+    const liabilities = findTree(trees, "Liabilities");
+    const incomeTrees = incomeStatement?.data?.trees || [];
+    const income = findTree(incomeTrees, "Income");
+    const expenses = findTree(incomeTrees, "Expenses");
+    const assetTotal = sumBalance(assets?.balance_children);
+    const liabilityTotal = Math.abs(sumBalance(liabilities?.balance_children));
+    const incomeTotal = Math.abs(sumBalance(income?.balance_children));
+    const expenseTotal = Math.abs(sumBalance(expenses?.balance_children));
+    return {
+      assets: assetTotal,
+      liabilities: liabilityTotal,
+      net: assetTotal - liabilityTotal,
+      income: incomeTotal,
+      expenses: expenseTotal,
+      savings: incomeTotal - expenseTotal,
+    };
+  }, [balanceSheet, incomeStatement]);
+
+  const watchedCount = useMemo(
+    () =>
+      sources.filter((source) => {
+        if (source.kind !== "crypto") return false;
+        const chain = watcherChain(source.chain || source.name);
+        return (
+          chain &&
+          String(watcherConfig[chain] || "").toLowerCase() ===
+            source.reference.trim().toLowerCase()
+        );
+      }).length,
+    [sources, watcherConfig],
+  );
 
   const resetDraft = () => {
     setDraft(emptyDraft());
     setEditingId(null);
   };
 
-  const saveSource = () => {
-    const name = draft.name.trim();
-    if (!name) return;
-    const payload = {
-      name,
-      kind: draft.kind,
-      status: draft.status,
-      ledgerAccount: draft.ledgerAccount.trim(),
-      envVar: draft.envVar.trim(),
-      reference: draft.reference.trim(),
-      chain: draft.chain.trim(),
-      notes: draft.notes.trim(),
-      tags: draft.tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean),
-      lastSync: "",
-    };
-    if (editingId) {
-      const existing = sources.find((source) => source.id === editingId);
-      if (existing) {
-        updateFinanceSource({ ...existing, ...payload });
-        showSuccess("Finance source updated.");
-        void maybeAddToWatcher({ ...existing, ...payload });
-      }
-    } else {
-      addFinanceSource({ ...payload, lastSync: "" });
-      showSuccess("Finance source added.");
-      void maybeAddToWatcher({
-        ...payload,
-        id: "",
-        createdAt: "",
-        updatedAt: "",
-      } as FinanceSourceType);
-    }
-    resetDraft();
-  };
-
-  const maybeAddToWatcher = async (source: FinanceSourceType) => {
-    if (source.kind !== "crypto") return;
-    const chain = watcherChain(source.chain || source.name);
-    if (!chain) {
-      if (String(source.chain || source.name).toUpperCase().includes("XMR")) {
+  const maybeAddToWatcher = async (
+    chain: string,
+    address: string,
+    name: string,
+  ) => {
+    const key = watcherChain(chain || name);
+    if (!key) {
+      if (String(chain || name).toUpperCase().includes("XMR")) {
         showInfo(
           "Monero uses the view-only wallet, not the address watcher. Run xmr-watch-setup to configure it.",
         );
       } else {
-        showInfo("Set a chain (BTC, LTC, ETH) to link this source to the watcher.");
+        showInfo("Choose BTC, LTC, or ETH to link this source to the watcher.");
       }
       return;
     }
-    const address = source.reference.trim();
-    if (!address) {
-      showInfo(
-        "Add the wallet address in Reference, then save again to link it to the watcher.",
-      );
+    if (!address.trim()) {
+      showInfo("Add the wallet address so the watcher can track it.");
       return;
     }
-    if (!window.confirm(
-      `Add this ${chain.toUpperCase()} address to the crypto watcher?\n\n${address}`,
-    )) {
+    if (
+      !window.confirm(
+        `Add this ${key.toUpperCase()} address to the crypto watcher?\n\n${address.trim()}`,
+      )
+    ) {
       return;
     }
     try {
-      setWatcherConfig(await writeCryptoWatcherAddress(chain, address));
-      showSuccess(`${chain.toUpperCase()} address added to the crypto watcher.`);
+      setWatcherConfig(await writeCryptoWatcherAddress(key, address.trim()));
+      showSuccess(`${key.toUpperCase()} address added to the crypto watcher.`);
     } catch (error) {
       showError(
         `Could not update the crypto watcher: ${
@@ -194,165 +257,296 @@ const FinancePage: React.FC = () => {
     }
   };
 
+  const saveSource = async () => {
+    const name = draft.name.trim();
+    if (!name) return;
+    const isCrypto = draft.kind === "crypto";
+    if (isCrypto && !draft.reference.trim()) {
+      showError("Crypto sources need the wallet address to watch.");
+      return;
+    }
+
+    const payload = {
+      name,
+      kind: draft.kind,
+      status: draft.status,
+      ledgerAccount: draft.ledgerAccount.trim(),
+      envVar: isCrypto ? "" : draft.envVar.trim(),
+      reference: draft.reference.trim(),
+      chain: isCrypto ? draft.chain.trim() : "",
+      notes: draft.notes.trim(),
+      tags: draft.tags
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+      lastSync: "",
+    };
+
+    let sourceId = editingId;
+    if (editingId) {
+      const existing = sources.find((source) => source.id === editingId);
+      if (existing) {
+        updateFinanceSource({ ...existing, ...payload });
+        showSuccess("Finance source updated.");
+      }
+    } else {
+      sourceId = addFinanceSource({ ...payload, lastSync: "" });
+      showSuccess("Finance source added.");
+    }
+
+    if (sourceId && draft.apiKey.trim()) {
+      writeSecret(sourceId, draft.apiKey.trim());
+      showSuccess("API key saved locally, not in the project file.");
+    }
+
+    if (isCrypto) {
+      await maybeAddToWatcher(draft.chain, draft.reference, draft.name);
+    }
+    resetDraft();
+  };
+
   const startEdit = (source: FinanceSourceType) => {
     setEditingId(source.id);
     setDraft({
       name: source.name,
-      kind: source.kind,
+      kind: (source.kind === "beancount"
+        ? "other"
+        : source.kind) as Exclude<FinanceSourceKind, "beancount">,
       status: source.status,
       ledgerAccount: source.ledgerAccount || "",
       envVar: source.envVar || "",
       reference: source.reference || "",
       chain: source.chain || "",
+      apiKey: readSecret(source.id),
       notes: source.notes || "",
       tags: (source.tags || []).join(", "),
     });
   };
 
-  const addPreset = (preset: Partial<FinanceSourceType> & { name: string }) => {
-    addFinanceSource({
-      name: preset.name,
-      kind: preset.kind || "other",
-      status: "active",
-      ledgerAccount: preset.ledgerAccount || "",
-      envVar: preset.envVar || "",
-      reference: preset.reference || "",
-      chain: preset.chain || "",
-      notes: preset.notes || "",
-      tags: preset.tags || [],
-      lastSync: "",
-    });
-    showSuccess(`${preset.name} source added.`);
-  };
+  const kindNeedsKey = KIND_OPTIONS.find(
+    (option) => option.value === draft.kind,
+  )?.needsKey;
 
   return (
     <MainContentArea
       title="Personal Finances"
       inlineActions={
         <div className="flex items-center gap-1 rounded-lg bg-gray-200 p-1 dark:bg-gray-700">
-          <button
-            type="button"
-            onClick={() => setTab("beancount")}
-            className={`rounded-md px-3 py-1 text-sm font-medium ${
-              tab === "beancount"
-                ? "bg-white text-blue-600 shadow dark:bg-gray-800 dark:text-blue-300"
-                : "text-gray-600 dark:text-gray-300"
-            }`}
-          >
-            Beancount
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("sources")}
-            className={`rounded-md px-3 py-1 text-sm font-medium ${
-              tab === "sources"
-                ? "bg-white text-blue-600 shadow dark:bg-gray-800 dark:text-blue-300"
-                : "text-gray-600 dark:text-gray-300"
-            }`}
-          >
-            Sources ({sources.length})
-          </button>
+          {(["dashboard", "books", "sources"] as const).map((next) => (
+            <button
+              key={next}
+              type="button"
+              onClick={() => setTab(next)}
+              className={`rounded-md px-3 py-1 text-sm font-medium capitalize ${
+                tab === next
+                  ? "bg-white text-blue-600 shadow dark:bg-gray-800 dark:text-blue-300"
+                  : "text-gray-600 dark:text-gray-300"
+              }`}
+            >
+              {next === "books" ? "Beancount" : next}
+            </button>
+          ))}
         </div>
       }
     >
-      {tab === "beancount" ? (
+      {tab === "dashboard" && (
         <div className="space-y-4">
-          <section className="grid grid-cols-1 gap-2 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800 md:grid-cols-4">
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                Beancount ledger file
-              </label>
-              <input
-                className={inputClass}
-                value={ledgerFile}
-                onChange={(event) => setLedgerFile(event.target.value)}
-                placeholder={DEFAULT_LEDGER}
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                Fava URL
-              </label>
-              <input
-                className={inputClass}
-                value={favaUrl}
-                onChange={(event) => setFavaUrl(event.target.value)}
-                placeholder={DEFAULT_FAVA}
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-2 md:col-span-4">
-              <Button variant="primary" onClick={saveSettings}>
-                Save settings
-              </Button>
-              <Button
-                variant="outline"
-                leftIcon={<FiRefreshCw className="h-4 w-4" />}
-                onClick={() => void checkFava()}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              ["Net worth", totals.net, "text-gray-900 dark:text-white"],
+              ["Assets", totals.assets, "text-green-600 dark:text-green-400"],
+              [
+                "Liabilities",
+                totals.liabilities,
+                "text-red-600 dark:text-red-400",
+              ],
+              [
+                "Savings this period",
+                totals.savings,
+                "text-blue-600 dark:text-blue-400",
+              ],
+            ].map(([label, value, color]) => (
+              <div
+                key={String(label)}
+                className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
               >
-                Check Fava
-              </Button>
-              <Button
-                variant="outline"
-                leftIcon={<FiExternalLink className="h-4 w-4" />}
-                onClick={() => window.open(favaUrl, "_blank")}
-              >
-                Open in browser
-              </Button>
-              <span
-                className={`text-xs ${
-                  favaStatus === "reachable"
-                    ? "text-green-600 dark:text-green-400"
-                    : favaStatus === "checking"
-                      ? "text-gray-500 dark:text-gray-400"
-                      : "text-amber-600 dark:text-amber-400"
-                }`}
-              >
-                {favaStatus === "reachable"
-                  ? "Fava is running"
-                  : favaStatus === "checking"
-                    ? "Checking Fava…"
-                    : "Fava is not reachable"}
-              </span>
-            </div>
-          </section>
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {label}
+                </p>
+                <p className={`mt-1 text-2xl font-semibold ${color}`}>
+                  {Number(value).toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </p>
+              </div>
+            ))}
+          </div>
 
-          {favaStatus === "reachable" ? (
-            <section className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-              <iframe
-                key={favaUrl}
-                title="Beancount · Fava"
-                src={favaUrl}
-                className="h-[70vh] w-full"
-              />
-            </section>
-          ) : (
-            <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Beancount
+                </h3>
+                <span
+                  className={`text-xs ${
+                    status
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-amber-600 dark:text-amber-400"
+                  }`}
+                >
+                  {status ? "Fava connected" : "offline"}
+                </span>
+              </div>
+              <p className="mt-2 break-all text-xs text-gray-500 dark:text-gray-400">
+                {status?.ledgerFile || project?.financeSettings?.ledgerFile || "Ledger not configured"}
+              </p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {status?.root || project?.financeSettings?.favaUrl || "Fava not configured"}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => void loadFinance()}>
+                  Refresh
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setTab("books")}
+                >
+                  Open books
+                </Button>
+              </div>
+              {statusError && (
+                <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                  {statusError}
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                Start the Beancount server
+                Watched sources
+              </h3>
+              <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+                {watchedCount}
+                <span className="ml-1 text-sm font-normal text-gray-500 dark:text-gray-400">
+                  / {sources.filter((source) => source.kind === "crypto").length} crypto
+                </span>
+              </p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {sources.length} source{sources.length === 1 ? "" : "s"} total
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-3"
+                onClick={() => setTab("sources")}
+              >
+                Manage sources
+              </Button>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Income / expenses
+              </h3>
+              <div className="mt-2 space-y-1 text-sm">
+                <div className="flex justify-between text-gray-600 dark:text-gray-300">
+                  <span>Income</span>
+                  <span>{totals.income.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-gray-600 dark:text-gray-300">
+                  <span>Expenses</span>
+                  <span>{totals.expenses.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between border-t border-gray-200 pt-1 font-medium text-gray-900 dark:border-gray-700 dark:text-white">
+                  <span>Net</span>
+                  <span>{(totals.income - totals.expenses).toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+              Sources
+            </h3>
+            {sources.length === 0 ? (
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                No sources yet. Add a crypto wallet or API in Sources.
+              </p>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {sources.map((source) => (
+                  <span
+                    key={source.id}
+                    className="rounded-full border border-gray-200 px-2.5 py-1 text-xs text-gray-600 dark:border-gray-700 dark:text-gray-300"
+                  >
+                    {source.name}
+                    <span className="ml-1 text-gray-400">{source.kind}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tab === "books" && (
+        <div className="space-y-2">
+          {status ? (
+            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+              <iframe
+                title="Beancount · Fava"
+                src={status.root}
+                className="h-[75vh] w-full"
+              />
+            </div>
+          ) : (
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Beancount is offline
               </h3>
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                SkeletonKey uses Fava to show and edit the Beancount ledger. If
-                it is not running, start it locally and reload this tab.
+                Start it with <code>npm run beancount</code>. Ledger and Fava
+                URL are configured in Settings → Finances.
               </p>
-              <pre className="mt-3 overflow-x-auto rounded bg-gray-900 p-3 text-xs text-gray-100">
-{`# start Fava in the background
-~/.local/bin/beancount-server
-
-# ledger file
-${ledgerFile}`}
-              </pre>
-              <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                The MCP server that reads the ledger is{" "}
-                <code>~/.local/bin/beancount-server</code> for Fava, and{" "}
-                <code>mcp-beancount</code> for agents. Set{" "}
-                <code>BEANCOUNT_FILE</code> to the ledger path.
-              </p>
-            </section>
+              {statusError && (
+                <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                  {statusError}
+                </p>
+              )}
+              <div className="mt-3 flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => void loadFinance()}>
+                  Retry
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  leftIcon={<FiExternalLink className="h-4 w-4" />}
+                  onClick={() =>
+                    window.open(
+                      project?.financeSettings?.favaUrl ||
+                        "http://127.0.0.1:5001",
+                      "_blank",
+                    )
+                  }
+                >
+                  Open in browser
+                </Button>
+              </div>
+            </div>
           )}
         </div>
-      ) : (
+      )}
+
+      {tab === "sources" && (
         <div className="space-y-4">
           <section className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
+            <h3 className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">
+              {editingId ? "Edit source" : "Add source"}
+            </h3>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
               <div className="md:col-span-2">
                 <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -367,12 +561,12 @@ ${ledgerFile}`}
                       name: event.target.value,
                     }))
                   }
-                  placeholder="e.g. Stripe payouts, Monero wallet"
+                  placeholder="e.g. Monero wallet, Stripe payouts"
                 />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Kind
+                  Type
                 </label>
                 <select
                   className={inputClass}
@@ -380,13 +574,13 @@ ${ledgerFile}`}
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
-                      kind: event.target.value as FinanceSourceKind,
+                      kind: event.target.value as typeof current.kind,
                     }))
                   }
                 >
-                  {KINDS.map((kind) => (
-                    <option key={kind} value={kind}>
-                      {kind}
+                  {KIND_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
                     </option>
                   ))}
                 </select>
@@ -410,7 +604,104 @@ ${ledgerFile}`}
                   <option value="error">error</option>
                 </select>
               </div>
-              <div>
+
+              {draft.kind === "crypto" ? (
+                <>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+                      Network
+                    </label>
+                    <select
+                      className={inputClass}
+                      value={draft.chain}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          chain: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Choose network</option>
+                      <option value="BTC">Bitcoin (BTC)</option>
+                      <option value="LTC">Litecoin (LTC)</option>
+                      <option value="ETH">Ethereum (ETH)</option>
+                      <option value="XMR">Monero (XMR)</option>
+                    </select>
+                  </div>
+                  <div className="md:col-span-3">
+                    <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+                      Address to watch
+                    </label>
+                    <input
+                      className={inputClass}
+                      value={draft.reference}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          reference: event.target.value,
+                        }))
+                      }
+                      placeholder="Wallet address"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="md:col-span-2">
+                    <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {kindNeedsKey ? "API key" : "Reference"}
+                    </label>
+                    {kindNeedsKey ? (
+                      <div className="relative">
+                        <FiLock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="password"
+                          className={`${inputClass} pl-9`}
+                          value={draft.apiKey}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              apiKey: event.target.value,
+                            }))
+                          }
+                          placeholder="Stored locally, never in the project"
+                          autoComplete="off"
+                        />
+                      </div>
+                    ) : (
+                      <input
+                        className={inputClass}
+                        value={draft.reference}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            reference: event.target.value,
+                          }))
+                        }
+                        placeholder="Account, endpoint, or note"
+                      />
+                    )}
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+                      Env var (optional)
+                    </label>
+                    <input
+                      className={inputClass}
+                      value={draft.envVar}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          envVar: event.target.value,
+                        }))
+                      }
+                      placeholder="STRIPE_API_KEY"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="md:col-span-2">
                 <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
                   Ledger account
                 </label>
@@ -423,64 +714,9 @@ ${ledgerFile}`}
                       ledgerAccount: event.target.value,
                     }))
                   }
-                  placeholder="Assets:Bank:Checking"
+                  placeholder="Assets:Crypto:BTC"
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Env var (never the secret)
-                </label>
-                <input
-                  className={inputClass}
-                  value={draft.envVar}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      envVar: event.target.value,
-                    }))
-                  }
-                  placeholder="STRIPE_API_KEY"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Reference
-                </label>
-                <input
-                  className={inputClass}
-                  value={draft.reference}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      reference: event.target.value,
-                    }))
-                  }
-                  placeholder="wallet address, account id, API endpoint…"
-                />
-              </div>
-              {draft.kind === "crypto" && (
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                    Chain
-                  </label>
-                  <select
-                    className={inputClass}
-                    value={draft.chain}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        chain: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">Select chain</option>
-                    <option value="BTC">BTC</option>
-                    <option value="LTC">LTC</option>
-                    <option value="ETH">ETH</option>
-                    <option value="XMR">XMR</option>
-                  </select>
-                </div>
-              )}
               <div className="md:col-span-2">
                 <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
                   Tags
@@ -497,7 +733,7 @@ ${ledgerFile}`}
                   placeholder="comma, separated"
                 />
               </div>
-              <div className="md:col-span-2">
+              <div className="md:col-span-4">
                 <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
                   Notes
                 </label>
@@ -522,7 +758,7 @@ ${ledgerFile}`}
               <Button
                 variant="primary"
                 leftIcon={<FiPlus className="h-4 w-4" />}
-                onClick={saveSource}
+                onClick={() => void saveSource()}
                 disabled={!draft.name.trim()}
               >
                 {editingId ? "Save source" : "Add source"}
@@ -530,166 +766,100 @@ ${ledgerFile}`}
             </div>
           </section>
 
-          <section className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                addPreset({
-                  name: "Stripe",
-                  kind: "stripe",
-                  envVar: "STRIPE_API_KEY",
-                  ledgerAccount: "Assets:Stripe",
-                  notes: "Read-only API key in the environment.",
-                })
-              }
-            >
-              + Stripe
-            </Button>
-            {["Monero", "Bitcoin", "Ethereum", "Litecoin"].map((chain) => (
-              <Button
-                key={chain}
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  addPreset({
-                    name: `${chain} wallet`,
-                    kind: "crypto",
-                    chain:
-                      chain === "Monero"
-                        ? "XMR"
-                        : chain === "Bitcoin"
-                          ? "BTC"
-                          : chain === "Ethereum"
-                            ? "ETH"
-                            : "LTC",
-                    reference: "",
-                    ledgerAccount: `Assets:Crypto:${chain}`,
-                    notes: "Managed by the local crypto watcher.",
-                  })
-                }
-              >
-                + {chain}
-              </Button>
-            ))}
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                addPreset({
-                  name: "Beancount ledger",
-                  kind: "beancount",
-                  ledgerAccount: "",
-                  notes: `Ledger: ${ledgerFile}`,
-                })
-              }
-            >
-              + Beancount
-            </Button>
-          </section>
-
           <section className="overflow-x-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-700/50">
                 <tr>
-                  {[
-                    "Source",
-                    "Kind",
-                    "Status",
-                    "Ledger account",
-                    "Env / reference",
-                    "Watcher",
-                    "",
-                  ].map((label) => (
-                    <th
-                      key={label}
-                      className="whitespace-nowrap px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300"
-                    >
-                      {label}
-                    </th>
-                  ))}
+                  {["Source", "Type", "Status", "Watched", "Account", ""].map(
+                    (label) => (
+                      <th
+                        key={label}
+                        className="whitespace-nowrap px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300"
+                      >
+                        {label}
+                      </th>
+                    ),
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {sources.map((source) => (
-                  <tr key={source.id}>
-                    <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
-                      {source.name}
-                      {source.notes && (
-                        <p className="text-[11px] font-normal text-gray-500 dark:text-gray-400">
-                          {source.notes}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 capitalize text-gray-600 dark:text-gray-300">
-                      {source.kind}
-                    </td>
-                    <td className="px-3 py-2 capitalize text-gray-600 dark:text-gray-300">
-                      {source.status}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-xs text-gray-600 dark:text-gray-300">
-                      {source.ledgerAccount}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
-                      {source.envVar}
-                      {source.envVar && source.reference ? " · " : ""}
-                      {source.reference}
-                    </td>
-                    <td className="px-3 py-2 text-xs">
-                      {source.kind === "crypto" ? (
-                        (() => {
-                          const chain = watcherChain(
-                            source.chain || source.name,
-                          );
-                          const watched =
-                            chain &&
-                            String(watcherConfig[chain] || "").toLowerCase() ===
-                              source.reference.trim().toLowerCase();
-                          return watched ? (
+                {sources.map((source) => {
+                  const chain = watcherChain(source.chain || source.name);
+                  const watched =
+                    source.kind === "crypto" &&
+                    chain &&
+                    String(watcherConfig[chain] || "").toLowerCase() ===
+                      source.reference.trim().toLowerCase();
+                  return (
+                    <tr key={source.id}>
+                      <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
+                        {source.name}
+                        {source.notes && (
+                          <p className="text-[11px] font-normal text-gray-500 dark:text-gray-400">
+                            {source.notes}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 capitalize text-gray-600 dark:text-gray-300">
+                        {source.kind}
+                      </td>
+                      <td className="px-3 py-2 capitalize text-gray-600 dark:text-gray-300">
+                        {source.status}
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {source.kind === "crypto" ? (
+                          watched ? (
                             <span className="text-green-600 dark:text-green-400">
                               watched
                             </span>
                           ) : (
                             <span className="text-amber-600 dark:text-amber-400">
-                              not in watcher
+                              not watched
                             </span>
-                          );
-                        })()
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      <button
-                        type="button"
-                        className="mr-2 text-gray-400 hover:text-blue-600"
-                        onClick={() => startEdit(source)}
-                        title="Edit"
-                      >
-                        <FiEdit2 className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        className="text-gray-400 hover:text-red-500"
-                        onClick={() => {
-                          deleteFinanceSource(source.id);
-                          showSuccess("Finance source removed.");
-                        }}
-                        title="Delete"
-                      >
-                        <FiTrash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                          )
+                        ) : readSecret(source.id) ? (
+                          <span className="text-green-600 dark:text-green-400">
+                            key saved
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">env</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs text-gray-600 dark:text-gray-300">
+                        {source.ledgerAccount}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          className="mr-2 text-gray-400 hover:text-blue-600"
+                          onClick={() => startEdit(source)}
+                          title="Edit"
+                        >
+                          <FiEdit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          className="text-gray-400 hover:text-red-500"
+                          onClick={() => {
+                            deleteFinanceSource(source.id);
+                            writeSecret(source.id, "");
+                            showSuccess("Finance source removed.");
+                          }}
+                          title="Delete"
+                        >
+                          <FiTrash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {sources.length === 0 && (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={6}
                       className="px-3 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
                     >
-                      No finance sources yet. Add Beancount, Stripe, a crypto
-                      wallet, or another ledger.
+                      No sources yet. Add a crypto wallet or an API source.
                     </td>
                   </tr>
                 )}

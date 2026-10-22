@@ -433,17 +433,17 @@ const NarrativeBuilderPageInternal: React.FC<{
 
     return (
       <div
-        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-lg transition-shadow cursor-pointer"
+        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2.5 hover:shadow-md transition-shadow cursor-pointer"
         onClick={onClick}
       >
         <div className="flex justify-between items-start">
           <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white truncate">
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white truncate">
               {scene.order}. {scene.title || "Untitled Scene"}
             </h3>
             {scene.description && (
               <p
-                className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-1"
+                className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1"
                 title={scene.description}
               >
                 {scene.description}
@@ -1054,12 +1054,12 @@ const NarrativeBuilderPageInternal: React.FC<{
 
   const renderSceneList = () => (
     <div>
-      <div className="flex justify-end mb-4">
-        <Button variant="primary" onClick={handleCreateScene}>
+      <div className="flex justify-end mb-2">
+        <Button variant="primary" size="sm" onClick={handleCreateScene}>
           Add Scene
         </Button>
       </div>
-      <div className="space-y-4">
+      <div className="space-y-2">
         {selectedNarrative?.scenes && selectedNarrative.scenes.length > 0 ? (
           selectedNarrative.scenes
             .sort((a, b) => a.order - b.order)
@@ -1089,10 +1089,10 @@ const NarrativeBuilderPageInternal: React.FC<{
     const displayContent = processContentForDisplay(selectedScene.content);
 
     return (
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+      <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm">
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
               Scene {selectedScene.order}: {selectedScene.title}
             </h2>
             {selectedScene.description && (
@@ -1122,7 +1122,7 @@ const NarrativeBuilderPageInternal: React.FC<{
         </div>
 
         <div className="prose dark:prose-invert max-w-none">
-          <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg min-h-[200px]">
+          <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg min-h-[120px]">
             {selectedScene.content ? (
               <div className="whitespace-pre-wrap text-gray-800 dark:text-gray-200">
                 {typeof displayContent === "string"
@@ -1141,8 +1141,8 @@ const NarrativeBuilderPageInternal: React.FC<{
   };
 
   const renderSceneEditor = () => (
-    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
-      <h3 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">
+    <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm">
+      <h3 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">
         {selectedSceneId ? "Edit Scene" : "New Scene"}
       </h3>
       <div className="space-y-4">
@@ -1185,7 +1185,7 @@ const NarrativeBuilderPageInternal: React.FC<{
 
   return (
     <MainContentArea
-      title={isFlowsSection ? "Flows & Ideas" : "Narrative Builder"}
+      title={isFlowsSection ? "Flows & Notes" : "Narrative Builder"}
       noPadding={true}
       actions={
         isFlowsSection && selectedNarrative?.reportType === "flow" ? (
@@ -1196,9 +1196,9 @@ const NarrativeBuilderPageInternal: React.FC<{
       }
     >
       <div className="h-full flex overflow-hidden bg-gray-50 dark:bg-gray-900">
-        <div className="w-[320px] flex-shrink-0 bg-white dark:bg-gray-800 p-4 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full overflow-hidden">
+        <div className="w-60 flex-shrink-0 bg-white dark:bg-gray-800 p-2.5 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full overflow-hidden">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
               {isFlowsSection ? "Flow sections" : "Stories & diary"}
             </h2>
             <Button size="sm" onClick={handleCreateNarrative}>
@@ -1212,7 +1212,7 @@ const NarrativeBuilderPageInternal: React.FC<{
                 <button
                   key={n.id}
                   onClick={() => setSelectedNarrativeId(n.id)}
-                  className={`w-full text-left p-3 rounded-md transition-colors flex items-start gap-3 ${
+                  className={`w-full text-left p-2 rounded-md transition-colors flex items-start gap-2 ${
                     isSelected
                       ? "bg-blue-600 text-white"
                       : "hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -1227,7 +1227,7 @@ const NarrativeBuilderPageInternal: React.FC<{
                   />
                   <div className="flex-1 overflow-hidden">
                     <p
-                      className={`font-semibold truncate ${
+                      className={`font-medium truncate ${
                         isSelected
                           ? "text-white"
                           : "text-gray-800 dark:text-gray-100"
@@ -1265,12 +1265,12 @@ const NarrativeBuilderPageInternal: React.FC<{
         <div className="flex-1 flex flex-col min-w-0 bg-gray-50 dark:bg-gray-900 h-full overflow-hidden">
           {selectedNarrative ? (
             <>
-              <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center flex-shrink-0">
+              <div className="p-2.5 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center flex-shrink-0">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  <h2 className="text-base font-bold text-gray-900 dark:text-white">
                     {selectedNarrative.title}
                   </h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">
                     {selectedNarrative.description}
                   </p>
                 </div>
@@ -1309,7 +1309,7 @@ const NarrativeBuilderPageInternal: React.FC<{
                 ) : selectedNarrative.reportType === "flow" ? (
                   renderFlowView()
                 ) : (
-                  <div className="h-full overflow-y-auto p-6">
+                  <div className="h-full overflow-y-auto p-3">
                     {sceneViewMode === "list" && renderSceneList()}
                     {sceneViewMode === "view" && renderSceneView()}
                     {sceneViewMode === "edit" && renderSceneEditor()}
@@ -1332,7 +1332,7 @@ const NarrativeBuilderPageInternal: React.FC<{
         </div>
 
         {selectedNarrative?.reportType !== "note" && (
-          <div className="w-80 flex-shrink-0 h-full overflow-hidden">
+          <div className="w-64 flex-shrink-0 h-full overflow-hidden">
             <NarrativeResourcePanel onInsertResource={handleInsertResource} />
           </div>
         )}
