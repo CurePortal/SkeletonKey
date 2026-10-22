@@ -41,6 +41,9 @@ import MapEditorPage from "./pages/MapEditorPage";
 import NarrativeBuilderPage from "./pages/NarrativeBuilderPage";
 import FlowsIdeasPage from "./pages/FlowsIdeasPage";
 import TasksPage from "./pages/TasksPage";
+import PersonalAssetsPage from "./pages/PersonalAssetsPage";
+import FinancePage from "./pages/FinancePage";
+import ProfilePage from "./pages/ProfilePage";
 import CaseDocumentsPage from "./pages/CaseDocumentsPage";
 import SettingsPage from "./pages/SettingsPage";
 import LLMAssistantPanel from "./components/LLM/LLMAnalysisPanel";
@@ -93,6 +96,12 @@ const ProjectContent: React.FC = () => {
       return <FlowsIdeasPage />;
     case "tasks":
       return <TasksPage />;
+    case "assets":
+      return <PersonalAssetsPage />;
+    case "finances":
+      return <FinancePage />;
+    case "profile":
+      return <ProfilePage />;
     case "documents":
       return <CaseDocumentsPage />;
     case "ai-analysis":

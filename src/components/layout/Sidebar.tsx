@@ -20,6 +20,9 @@ import {
   FaProjectDiagram,
   FaTags,
   FaLightbulb,
+  FaBoxOpen,
+  FaWallet,
+  FaIdCard,
 } from "react-icons/fa"; // Import react-icons
 import { BsPin, BsPinFill } from "react-icons/bs"; // Import Pin icons
 import { LuBrainCircuit } from "react-icons/lu"; // Import AI icon
@@ -198,9 +201,12 @@ const Sidebar: React.FC = () => {
 
   const collapsedNav = [
     { view: "dashboard", label: "Overview", icon: <FaThLarge className="h-5 w-5" /> },
+    { view: "profile", label: "My Profile", icon: <FaIdCard className="h-5 w-5" /> },
     { view: "tasks", label: "Tasks", icon: <FaTasks className="h-5 w-5" /> },
     { view: "map", label: "Maps & Tracking", icon: <FaMap className="h-5 w-5" /> },
     { view: "documents", label: "Documents", icon: <FaFileAlt className="h-5 w-5" /> },
+    { view: "assets", label: "Personal Assets", icon: <FaBoxOpen className="h-5 w-5" /> },
+    { view: "finances", label: "Finances", icon: <FaWallet className="h-5 w-5" /> },
     { view: "knowledge-base", label: "Knowledge Base", icon: <FaBookOpen className="h-5 w-5" /> },
     { view: "narrative", label: "Narrative", icon: <FaPenSquare className="h-5 w-5" /> },
     {
@@ -301,6 +307,16 @@ const Sidebar: React.FC = () => {
                   }}
                 />
                 <NavItem
+                  label="My Profile"
+                  icon={<FaIdCard className="h-5 w-5" />}
+                  isActive={viewMode === "profile"}
+                  onClick={() => {
+                    setViewMode("profile");
+                    setCurrentKnowledgeBaseCategory(null);
+                    setSelectedKnowledgeBaseEntityId(null);
+                  }}
+                />
+                <NavItem
                   label="Tasks"
                   icon={<FaTasks className="h-5 w-5" />}
                   isActive={viewMode === "tasks"}
@@ -326,6 +342,26 @@ const Sidebar: React.FC = () => {
                   isActive={viewMode === "documents"}
                   onClick={() => {
                     setViewMode("documents");
+                    setCurrentKnowledgeBaseCategory(null);
+                    setSelectedKnowledgeBaseEntityId(null);
+                  }}
+                />
+                <NavItem
+                  label="Personal Assets"
+                  icon={<FaBoxOpen className="h-5 w-5" />}
+                  isActive={viewMode === "assets"}
+                  onClick={() => {
+                    setViewMode("assets");
+                    setCurrentKnowledgeBaseCategory(null);
+                    setSelectedKnowledgeBaseEntityId(null);
+                  }}
+                />
+                <NavItem
+                  label="Finances"
+                  icon={<FaWallet className="h-5 w-5" />}
+                  isActive={viewMode === "finances"}
+                  onClick={() => {
+                    setViewMode("finances");
                     setCurrentKnowledgeBaseCategory(null);
                     setSelectedKnowledgeBaseEntityId(null);
                   }}

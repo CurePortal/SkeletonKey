@@ -25,6 +25,9 @@ Return ONLY a JSON object, with no markdown fences, in this shape:
 
 Project actions you may request (each action is applied to the MCP project store):
 - task.upsert: {title, id?, status?: "todo"|"doing"|"blocked"|"done", section?, due?, dueEnd?, linkedEntityIds?, documentIds?}
+- asset.upsert: {name, id?, category?, quantity?, condition?, status?: "owned"|"loaned"|"stored"|"sold"|"lost", location?, serialNumber?, value?, acquiredDate?, notes?, tags?}
+- finance.source.upsert: {name, id?, kind?: "beancount"|"stripe"|"crypto"|"bank"|"manual"|"other", status?: "active"|"paused"|"error", ledgerAccount?, envVar?, reference?, chain?, notes?, tags?}
+- profile.update: {name?, callsign?, pronouns?, timezone?, homeBase?, languages?, communicationStyle?, accessibilityNeeds?, healthNotes?, constraints?, skills?, resources?, routines?, currentObjectives?, importantPeople?, dislikes?, notes?, tags?}
 - report.upsert: {title, id?, reportType?: "linear"|"flow"|"note", description?, content?, scenes?, nodes?, edges?, tags?}
 - kb.type.upsert: {id?, name, namePlural?, icon?, description?, color?}
 - kb.entity.upsert: {entityType, name, description?, tags?, fields?}

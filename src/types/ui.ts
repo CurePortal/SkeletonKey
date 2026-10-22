@@ -50,6 +50,7 @@ export type LegacySingularEntityType =
 
 export type ViewMode =
   | "dashboard"
+  | "profile"
   | "timeline"
   | "map"
   | "knowledge-base"
@@ -57,6 +58,8 @@ export type ViewMode =
   | "flows-ideas"
   | "documents"
   | "tasks"
+  | "assets"
+  | "finances"
   | "notes"
   | "whiteboard"
   | "ai-analysis"

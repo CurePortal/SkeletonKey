@@ -425,6 +425,53 @@ The app syncs the MCP project into the main record when the bridge is running.
 
 ---
 
+## Personal profile, assets, and finances
+
+SkeletonKey keeps the handler briefed on the operative, not just the record.
+
+- **My Profile** is the personnel file: name/callsign, communication style,
+  accessibility and health needs, constraints, skills, resources, routines, and
+  current objectives. HQ reads this before giving advice or acting.
+- **Personal Assets** is an inventory of what the operative actually has at
+  their disposal: tools, electronics, vehicles, documents, and so on, with
+  quantity, condition, location, serial, value, and tags.
+- **Personal Finances** connects the record to a **Beancount** ledger. It can
+  open Fava in an embedded view and manage ledger sources such as Beancount,
+  Stripe, crypto wallets, and bank accounts. Secret API keys are never stored in
+  the project; sources keep only an environment-variable name.
+
+Both the profile and the asset/finance context are included in the AI
+assistant's project context, so HQ can answer and task with them in scope.
+
+### Beancount and Fava setup
+
+SkeletonKey expects a local Beancount ledger and a Fava server, both optional:
+
+```bash
+# 1. Create a ledger directory (or use an existing one)
+mkdir -p ~/beancount
+cd ~/beancount
+python3 -m venv .venv
+. .venv/bin/activate
+pip install beancount fava mcp-beancount
+
+# 2. Point the app at the ledger in Settings → Finances, or set:
+export BEANCOUNT_FILE="$HOME/beancount/main.beancount"
+
+# 3. Start Fava (serves 127.0.0.1:5000)
+~/.local/bin/beancount-server
+```
+
+The bundled MCP wiring includes a `beancount-skeletonkey` instance in
+`opencode.example.json`; point its `BEANCOUNT_FILE` at the SkeletonKey ledger
+(or the same books you use in the app). The `skeletonkey` MCP also exposes
+`skeleton_finance_info` so agents can discover the ledger, Fava URL, and
+configured sources.
+
+Crypto sources can be linked to the local watcher: when you save a BTC, LTC, or
+ETH source with a wallet address, SkeletonKey asks before writing the address to
+`~/.config/crypto-watch/config.json`. XMR uses the view-only wallet instead.
+
 ## Wallet watch (optional)
 
 [`integrations/crypto-watch/`](integrations/crypto-watch/) watches the
@@ -481,6 +528,14 @@ yes/no).
 
 `wallet_status`, `wallet_events`, `wallet_notify`. Optional; requires the
 crypto-watch integration.
+
+### `beancount-skeletonkey` — the books
+
+Optional read-only Beancount MCP pointed at the SkeletonKey ledger. Set
+`BEANCOUNT_FILE`; see `opencode.example.json`. The `skeletonkey` MCP exposes
+`skeleton_profile_get`, `skeleton_profile_update`, `skeleton_finance_info`,
+`skeleton_finance_source_upsert`, and `skeleton_asset_upsert` so HQ can keep the
+personnel file, inventory, and finance sources current.
 
 ### `geo` — offline world
 

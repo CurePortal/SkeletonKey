@@ -19,6 +19,7 @@ import {
   FaFilter,
   FaCalendarAlt,
   FaLightbulb,
+  FaTable,
 } from "react-icons/fa";
 import { useProjectData } from "../contexts/ProjectDataContext";
 import { useNotification } from "../contexts/NotificationContext";
@@ -64,6 +65,40 @@ const iconMap: { [key: string]: React.ElementType } = {
   FaTags,
   FaCog,
   FaLightbulb,
+};
+
+const EditableCell: React.FC<{
+  value: string;
+  onCommit: (value: string) => void;
+}> = ({ value, onCommit }) => {
+  const [draft, setDraft] = React.useState(value);
+
+  React.useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  const commit = () => {
+    if (draft !== value) onCommit(draft);
+  };
+
+  return (
+    <input
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          (event.target as HTMLInputElement).blur();
+        }
+        if (event.key === "Escape") {
+          setDraft(value);
+          (event.target as HTMLInputElement).blur();
+        }
+      }}
+      className="w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-sm text-gray-900 hover:border-gray-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:text-gray-100 dark:hover:border-gray-600 dark:focus:bg-gray-900"
+    />
+  );
 };
 
 const KnowledgeBasePage: React.FC = () => {
@@ -155,7 +190,52 @@ const KnowledgeBasePage: React.FC = () => {
   const [selectedTimelineId, setSelectedTimelineId] = useState<string>("");
   const [isTimelineSelectorOpen, setIsTimelineSelectorOpen] = useState(false);
 
-  const [displayMode, setDisplayMode] = useState<"card" | "list">("card");
+  const [displayMode, setDisplayMode] = useState<
+    "card" | "list" | "table"
+  >("card");
+  const [tableColumnOrder, setTableColumnOrder] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem("sk-kb-table-column-order");
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [hiddenTableColumns, setHiddenTableColumns] = useState<string[]>(
+    () => {
+      try {
+        const raw = localStorage.getItem("sk-kb-table-hidden-columns");
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    },
+  );
+  const [showTableColumns, setShowTableColumns] = useState(false);
+  const [newRowOpen, setNewRowOpen] = useState(false);
+  const [newRowDraft, setNewRowDraft] = useState<Record<string, string>>({});
+  const [tableSort, setTableSort] = useState<{
+    key: string;
+    direction: "asc" | "desc";
+  } | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "sk-kb-table-column-order",
+        JSON.stringify(tableColumnOrder),
+      );
+    } catch {}
+  }, [tableColumnOrder]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "sk-kb-table-hidden-columns",
+        JSON.stringify(hiddenTableColumns),
+      );
+    } catch {}
+  }, [hiddenTableColumns]);
   const [sortField, setSortField] = useState<"name" | "date">("name");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [expandedTag, setExpandedTag] = useState<string | null>(null);
@@ -333,6 +413,232 @@ const KnowledgeBasePage: React.FC = () => {
     if (!iconName) return null;
     const IconComponent = iconMap[iconName];
     return IconComponent ? <IconComponent className="h-5 w-5 mr-1" /> : null;
+  };
+
+  const tableColumns = useMemo(() => {
+    const sectionInfo = getCurrentSectionInfo(currentSection);
+    const base = [
+      { key: "name", label: "Name" },
+      { key: "description", label: "Description" },
+      { key: "tags", label: "Tags" },
+      ...(sectionInfo?.fields || []).map((field) => ({
+        key: `field:${field.id}`,
+        label: field.name,
+        field,
+      })),
+      { key: "updated", label: "Updated" },
+    ];
+    const keys = new Set(base.map((column) => column.key));
+    const ordered = tableColumnOrder.filter((key) => keys.has(key));
+    for (const column of base) {
+      if (!ordered.includes(column.key)) ordered.push(column.key);
+    }
+    return ordered
+      .map((key) => base.find((column) => column.key === key))
+      .filter(Boolean) as Array<{
+      key: string;
+      label: string;
+      field?: any;
+    }>;
+  }, [currentSection, knowledgeBaseSections, tableColumnOrder]);
+
+  const visibleTableColumns = tableColumns.filter(
+    (column) =>
+      column.key === "name" || !hiddenTableColumns.includes(column.key),
+  );
+
+  const tableCellValue = (entity: any, key: string) => {
+    if (key === "name") return entity.name || entity.title || "";
+    if (key === "description") return entity.description || "";
+    if (key === "tags") return (entity.tags || []).join(", ");
+    if (key === "updated") return entity.updatedAt || "";
+    const fieldId = key.startsWith("field:") ? key.slice(6) : key;
+    return String(entity.fields?.[fieldId] ?? entity[fieldId] ?? "");
+  };
+
+  const tableRows = useMemo(() => {
+    if (!tableSort) return finalDisplayedEntities;
+    const rows = [...finalDisplayedEntities];
+    rows.sort((left, right) => {
+      const a = String(tableCellValue(left, tableSort.key) || "");
+      const b = String(tableCellValue(right, tableSort.key) || "");
+      const comparison = a.localeCompare(b, undefined, { numeric: true });
+      return tableSort.direction === "asc" ? comparison : -comparison;
+    });
+    return rows;
+  }, [finalDisplayedEntities, tableSort]);
+
+  const toggleTableSort = (key: string) => {
+    setTableSort((current) => {
+      if (!current || current.key !== key) return { key, direction: "asc" };
+      return {
+        key,
+        direction: current.direction === "asc" ? "desc" : "asc",
+      };
+    });
+  };
+
+  const moveTableColumn = (key: string, offset: number) => {
+    const order = tableColumns.map((column) => column.key);
+    const index = order.indexOf(key);
+    const target = index + offset;
+    if (index < 0 || target < 0 || target >= order.length) return;
+    [order[index], order[target]] = [order[target], order[index]];
+    setTableColumnOrder(order);
+  };
+
+  const createEntityFromRow = () => {
+    const name = String(newRowDraft.name || "").trim();
+    if (!name) return;
+    const singular = String(getSingularEntityType(currentSection));
+    const description = newRowDraft.description || "";
+    const tags = String(newRowDraft.tags || "")
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    const fields: Record<string, string> = {};
+    for (const column of tableColumns) {
+      if (!column.key.startsWith("field:")) continue;
+      fields[column.field.id] = newRowDraft[column.key] || "";
+    }
+
+    if (singular === "character") {
+      addCharacter({
+        name,
+        description,
+        tags,
+        birthDate: null,
+        deathDate: null,
+        timelineIds: [],
+        relatedCharacterIds: {},
+        linkedEventIds: [],
+        locations: [],
+        traits: [],
+        motivation: "",
+        background: "",
+        notes: "",
+        isHistorical: false,
+        imageUrl: null,
+      } as any);
+    } else if (singular === "location") {
+      addLocation({
+        name,
+        description,
+        tags,
+        coordinates: null,
+        timelineIds: [],
+        parentLocationId: null,
+        linkedEventIds: [],
+        foundedDate: null,
+        destroyedDate: null,
+        population: null,
+        importance: 3,
+        type: "Other",
+        notes: "",
+        mapUrl: null,
+      } as any);
+    } else if (singular === "technology") {
+      addTechnology({
+        name,
+        description,
+        tags,
+        discoveryDate: null,
+        timelineIds: [],
+        prerequisiteTechIds: [],
+        derivedTechIds: [],
+        inventors: [],
+        linkedEventIds: [],
+        developmentLevel: 3,
+        impact: 3,
+        fields: [],
+        notes: "",
+      } as any);
+    } else if (singular === "culture") {
+      addCulture({
+        name,
+        description,
+        tags,
+        foundedDate: null,
+        endDate: null,
+        timelineIds: [],
+        linkedLocationIds: [],
+        linkedCharacterIds: [],
+        linkedEventIds: [],
+        values: [],
+        practices: [],
+        languages: [],
+        beliefs: [],
+        notes: "",
+        imageUrl: null,
+      } as any);
+    } else if (singular === "source") {
+      addSourceDocument({
+        title: name,
+        description,
+        tags,
+        authors: [],
+        publicationDate: null,
+        type: "document",
+        url: null,
+        filePath: null,
+        fileName: null,
+        notes: "",
+        citations: {},
+      } as any);
+    } else {
+      addGenericEntity({
+        entityType: singular,
+        name,
+        description,
+        tags,
+        sourceDocumentIds: [],
+        fields,
+        timelineIds: [],
+        linkedEventIds: [],
+        linkedNarrativeIds: [],
+      });
+    }
+
+    setNewRowDraft({});
+    setNewRowOpen(false);
+    setRefreshKey((prev) => prev + 1);
+    showSuccess(`${getSingularLabel(currentSection)} added.`);
+  };
+
+  const handleTableCellSave = (entity: any, field: string, value: any) => {
+    const singular = String(getSingularEntityType(currentSection));
+    const updated: any = { ...entity };
+
+    if (field === "name") {
+      if (singular === "source") updated.title = value;
+      else updated.name = value;
+    } else if (field === "description" || field === "tags") {
+      updated[field] = value;
+    } else {
+      updated.fields = { ...(entity.fields || {}), [field]: value };
+    }
+
+    switch (singular) {
+      case "character":
+        updateCharacter(updated);
+        break;
+      case "location":
+        updateLocation(updated);
+        break;
+      case "technology":
+        updateTechnology(updated);
+        break;
+      case "culture":
+        updateCulture(updated);
+        break;
+      case "source":
+        updateSourceDocument(updated);
+        break;
+      default:
+        updateGenericEntity(updated);
+        break;
+    }
+    setRefreshKey((prev) => prev + 1);
   };
 
   const handleAddEntity = () => {
@@ -897,6 +1203,17 @@ const KnowledgeBasePage: React.FC = () => {
                         >
                           <FaList className="h-4 w-4" />
                         </button>
+                        <button
+                          onClick={() => setDisplayMode("table")}
+                          className={`px-2 py-1 text-sm rounded ${
+                            displayMode === "table"
+                              ? "bg-white dark:bg-gray-800 shadow-sm"
+                              : "text-gray-600 dark:text-gray-300"
+                          }`}
+                          title="Table View"
+                        >
+                          <FaTable className="h-4 w-4" />
+                        </button>
                       </div>
                       <div className="flex items-center gap-2">
                         <select
@@ -1141,6 +1458,238 @@ const KnowledgeBasePage: React.FC = () => {
                     >
                       Add {getSingularLabel(currentSection)}
                     </Button>
+                  </div>
+                ) : displayMode === "table" ? (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Click a column header to sort. Edit cells directly, or
+                        add a row at the bottom.
+                      </p>
+                      <div className="relative">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowTableColumns((open) => !open)}
+                        >
+                          Columns
+                        </Button>
+                        {showTableColumns && (
+                          <div className="absolute right-0 z-30 mt-1 w-64 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+                            {tableColumns.map((column) => (
+                              <div
+                                key={column.key}
+                                className="flex items-center gap-1 rounded px-1 py-1 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                              >
+                                <label className="flex flex-1 items-center gap-2 text-xs text-gray-700 dark:text-gray-200">
+                                  <input
+                                    type="checkbox"
+                                    disabled={column.key === "name"}
+                                    checked={
+                                      column.key === "name" ||
+                                      !hiddenTableColumns.includes(column.key)
+                                    }
+                                    onChange={() =>
+                                      setHiddenTableColumns((current) =>
+                                        current.includes(column.key)
+                                          ? current.filter(
+                                              (key) => key !== column.key,
+                                            )
+                                          : [...current, column.key],
+                                      )
+                                    }
+                                  />
+                                  {column.label}
+                                </label>
+                                <button
+                                  type="button"
+                                  className="px-1 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-400"
+                                  onClick={() => moveTableColumn(column.key, -1)}
+                                  title="Move up"
+                                >
+                                  ↑
+                                </button>
+                                <button
+                                  type="button"
+                                  className="px-1 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-400"
+                                  onClick={() => moveTableColumn(column.key, 1)}
+                                  title="Move down"
+                                >
+                                  ↓
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-gray-50 dark:bg-gray-700/50">
+                          <tr>
+                            {visibleTableColumns.map((column) => (
+                              <th
+                                key={column.key}
+                                className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap"
+                              >
+                                <button
+                                  type="button"
+                                  className="flex items-center gap-1"
+                                  onClick={() => toggleTableSort(column.key)}
+                                >
+                                  {column.label}
+                                  {tableSort?.key === column.key && (
+                                    <span className="text-[10px] text-gray-400">
+                                      {tableSort.direction === "asc" ? "↑" : "↓"}
+                                    </span>
+                                  )}
+                                </button>
+                              </th>
+                            ))}
+                            <th className="px-3 py-2" />
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                          {tableRows.map((entity) => (
+                            <tr
+                              key={entity.id}
+                              className={
+                                selectedEntityForDetails?.id === entity.id &&
+                                !editingEntityInfo
+                                  ? "bg-blue-50/60 dark:bg-blue-900/20"
+                                  : ""
+                              }
+                            >
+                              {visibleTableColumns.map((column) => (
+                                <td
+                                  key={column.key}
+                                  className={`px-2 py-1 align-top ${
+                                    column.key === "name"
+                                      ? "min-w-[12rem]"
+                                      : column.key === "description"
+                                        ? "min-w-[16rem]"
+                                        : column.key === "updated"
+                                          ? "whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"
+                                          : "min-w-[9rem]"
+                                  }`}
+                                >
+                                  {column.key === "updated" ? (
+                                    entity.updatedAt
+                                      ? new Date(
+                                          entity.updatedAt,
+                                        ).toLocaleDateString()
+                                      : ""
+                                  ) : (
+                                    <EditableCell
+                                      value={tableCellValue(entity, column.key)}
+                                      onCommit={(value) =>
+                                        handleTableCellSave(
+                                          entity,
+                                          column.key.startsWith("field:")
+                                            ? column.key.slice(6)
+                                            : column.key,
+                                          column.key === "tags"
+                                            ? value
+                                                .split(",")
+                                                .map((tag: string) =>
+                                                  tag.trim(),
+                                                )
+                                                .filter(Boolean)
+                                            : value,
+                                        )
+                                      }
+                                    />
+                                  )}
+                                </td>
+                              ))}
+                              <td className="px-3 py-2 align-top">
+                                <button
+                                  type="button"
+                                  className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                                  onClick={() => handleEntityCardClick(entity)}
+                                >
+                                  Open
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {newRowOpen && (
+                            <tr className="bg-blue-50/40 dark:bg-blue-900/20">
+                              {visibleTableColumns.map((column) => (
+                                <td
+                                  key={column.key}
+                                  className="px-2 py-1 align-top"
+                                >
+                                  {column.key === "updated" ? null : (
+                                    <input
+                                      autoFocus={column.key === "name"}
+                                      className="w-full rounded border border-gray-300 bg-white px-1.5 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                                      placeholder={column.label}
+                                      value={newRowDraft[column.key] || ""}
+                                      onChange={(event) =>
+                                        setNewRowDraft((current) => ({
+                                          ...current,
+                                          [column.key]: event.target.value,
+                                        }))
+                                      }
+                                      onKeyDown={(event) => {
+                                        if (event.key === "Enter") {
+                                          event.preventDefault();
+                                          createEntityFromRow();
+                                        }
+                                        if (event.key === "Escape") {
+                                          setNewRowOpen(false);
+                                          setNewRowDraft({});
+                                        }
+                                      }}
+                                    />
+                                  )}
+                                </td>
+                              ))}
+                              <td className="whitespace-nowrap px-2 py-1 align-top">
+                                <button
+                                  type="button"
+                                  className="mr-2 text-xs font-medium text-blue-600 disabled:opacity-40 dark:text-blue-400"
+                                  disabled={!String(newRowDraft.name || "").trim()}
+                                  onClick={createEntityFromRow}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                                  onClick={() => {
+                                    setNewRowOpen(false);
+                                    setNewRowDraft({});
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td
+                              colSpan={visibleTableColumns.length + 1}
+                              className="px-3 py-2"
+                            >
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                                onClick={() => {
+                                  setNewRowDraft({});
+                                  setNewRowOpen(true);
+                                }}
+                              >
+                                + Add row
+                              </button>
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
                   </div>
                 ) : displayMode === "card" ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-3">

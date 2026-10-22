@@ -224,6 +224,35 @@ export function formatProjectDataForLLM(projectData: ProjectType | null): string
   output += `Project: ${projectData.name || "Untitled"}\n`;
   output += `Description: ${projectData.description || "None"}\n\n`;
 
+  const profile = (projectData as any).profile;
+  if (profile) {
+    output += "=== OPERATIVE PERSONNEL FILE ===\n";
+    const profileFields: Array<[string, any]> = [
+      ["Name", profile.name],
+      ["Callsign", profile.callsign],
+      ["Pronouns", profile.pronouns],
+      ["Timezone", profile.timezone],
+      ["Home base", profile.homeBase],
+      ["Languages", profile.languages],
+      ["Communication style", profile.communicationStyle],
+      ["Accessibility needs", profile.accessibilityNeeds],
+      ["Health notes", profile.healthNotes],
+      ["Constraints", profile.constraints],
+      ["Skills", profile.skills],
+      ["Resources", profile.resources],
+      ["Routines", profile.routines],
+      ["Current objectives", profile.currentObjectives],
+      ["Important people", profile.importantPeople],
+      ["Dislikes / avoid", profile.dislikes],
+      ["Notes", profile.notes],
+      ["Tags", (profile.tags || []).join(", ")],
+    ];
+    for (const [label, value] of profileFields) {
+      if (String(value || "").trim()) output += `${label}: ${value}\n`;
+    }
+    output += "\n";
+  }
+
   // Timelines with events
   if (projectData.timelines?.length > 0) {
     output += "=== TIMELINES ===\n";
@@ -304,6 +333,41 @@ export function formatProjectDataForLLM(projectData: ProjectType | null): string
     });
   } else {
     output += "No tasks in project.\n";
+  }
+
+  // Personal assets: what the operative actually has at their disposal.
+  output += "\n=== PERSONAL ASSETS ===\n";
+  const assetRows = (projectData as any).assets || [];
+  if (assetRows.length > 0) {
+    assetRows.forEach((asset: any) => {
+      const value = asset.value == null ? "" : ` · value ${asset.value}`;
+      output += `- ${asset.name} [${asset.category}] x${asset.quantity || 1} · ${asset.status}${
+        asset.location ? ` · at ${asset.location}` : ""
+      }${asset.condition ? ` · ${asset.condition}` : ""}${
+        asset.serialNumber ? ` · serial ${asset.serialNumber}` : ""
+      }${value}\n`;
+      if (asset.tags?.length) output += `    Tags: ${asset.tags.join(", ")}\n`;
+    });
+  } else {
+    output += "No personal assets recorded.\n";
+  }
+
+  // Personal finances: Beancount ledger and configured sources.
+  output += "\n=== PERSONAL FINANCES ===\n";
+  const financeSettings = (projectData as any).financeSettings;
+  output += `Ledger: ${financeSettings?.ledgerFile || "not configured"}\n`;
+  output += `Fava: ${financeSettings?.favaUrl || "not configured"}\n`;
+  const financeSources = (projectData as any).financeSources || [];
+  if (financeSources.length > 0) {
+    financeSources.forEach((source: any) => {
+      output += `- ${source.name} [${source.kind}] · ${source.status}${
+        source.ledgerAccount ? ` · account ${source.ledgerAccount}` : ""
+      }${source.envVar ? ` · env ${source.envVar}` : ""}${
+        source.reference ? ` · ${source.reference}` : ""
+      }\n`;
+    });
+  } else {
+    output += "No finance sources configured.\n";
   }
 
   // Documents: names and review state only, never inferred contents.

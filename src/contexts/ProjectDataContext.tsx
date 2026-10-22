@@ -23,6 +23,10 @@ import {
   ReportType,
   SceneType,
   TaskType,
+  PersonalAssetType,
+  FinanceSourceType,
+  FinanceSettingsType,
+  OperativeProfileType,
   CaseDocumentType,
   AnchoredShape,
   MapScenario,
@@ -161,6 +165,25 @@ interface ProjectDataContextType {
   ) => ID;
   updateTask: (task: TaskType) => void;
   deleteTask: (taskId: ID) => void;
+
+  // Personal asset inventory
+  addFinanceSource: (
+    sourceData: Omit<FinanceSourceType, "id" | "createdAt" | "updatedAt"> & {
+      id?: ID;
+    },
+  ) => ID;
+  updateFinanceSource: (source: FinanceSourceType) => void;
+  deleteFinanceSource: (sourceId: ID) => void;
+  updateFinanceSettings: (settings: FinanceSettingsType) => void;
+  updateProfile: (profile: OperativeProfileType) => void;
+
+  addAsset: (
+    assetData: Omit<PersonalAssetType, "id" | "createdAt" | "updatedAt"> & {
+      id?: ID;
+    },
+  ) => ID;
+  updateAsset: (asset: PersonalAssetType) => void;
+  deleteAsset: (assetId: ID) => void;
 
   // Knowledge base category + generic entity operations
   upsertEntityType: (entityType: DynamicEntityType) => void;
@@ -1384,6 +1407,157 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
     [updateProjectDataAndAutoSave],
   );
 
+  const updateProfile = useCallback(
+    (profile: OperativeProfileType) => {
+      updateProjectDataAndAutoSave((currentProject) => {
+        if (!currentProject) return null;
+        return {
+          ...currentProject,
+          profile: { ...profile, updatedAt: new Date().toISOString() },
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    },
+    [updateProjectDataAndAutoSave],
+  );
+
+  const addFinanceSource = useCallback(
+    (
+      sourceData: Omit<
+        FinanceSourceType,
+        "id" | "createdAt" | "updatedAt"
+      > & { id?: ID },
+    ): ID => {
+      const id = sourceData.id || uuidv4();
+      const stamp = new Date().toISOString();
+      updateProjectDataAndAutoSave((currentProject) => {
+        if (!currentProject) return null;
+        const source: FinanceSourceType = {
+          ...sourceData,
+          id,
+          createdAt: stamp,
+          updatedAt: stamp,
+        };
+        return {
+          ...currentProject,
+          financeSources: [...(currentProject.financeSources || []), source],
+          updatedAt: stamp,
+        };
+      });
+      return id;
+    },
+    [updateProjectDataAndAutoSave],
+  );
+
+  const updateFinanceSource = useCallback(
+    (source: FinanceSourceType) => {
+      updateProjectDataAndAutoSave((currentProject) => {
+        if (!currentProject) return null;
+        return {
+          ...currentProject,
+          financeSources: (currentProject.financeSources || []).map((row) =>
+            row.id === source.id
+              ? { ...source, updatedAt: new Date().toISOString() }
+              : row,
+          ),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    },
+    [updateProjectDataAndAutoSave],
+  );
+
+  const deleteFinanceSource = useCallback(
+    (sourceId: ID) => {
+      updateProjectDataAndAutoSave((currentProject) => {
+        if (!currentProject) return null;
+        return {
+          ...currentProject,
+          financeSources: (currentProject.financeSources || []).filter(
+            (row) => row.id !== sourceId,
+          ),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    },
+    [updateProjectDataAndAutoSave],
+  );
+
+  const updateFinanceSettings = useCallback(
+    (settings: FinanceSettingsType) => {
+      updateProjectDataAndAutoSave((currentProject) => {
+        if (!currentProject) return null;
+        return {
+          ...currentProject,
+          financeSettings: settings,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    },
+    [updateProjectDataAndAutoSave],
+  );
+
+  const addAsset = useCallback(
+    (
+      assetData: Omit<PersonalAssetType, "id" | "createdAt" | "updatedAt"> & {
+        id?: ID;
+      },
+    ): ID => {
+      const id = assetData.id || uuidv4();
+      const stamp = new Date().toISOString();
+      updateProjectDataAndAutoSave((currentProject) => {
+        if (!currentProject) return null;
+        const asset: PersonalAssetType = {
+          ...assetData,
+          id,
+          createdAt: stamp,
+          updatedAt: stamp,
+        };
+        return {
+          ...currentProject,
+          assets: [...(currentProject.assets || []), asset],
+          updatedAt: stamp,
+        };
+      });
+      return id;
+    },
+    [updateProjectDataAndAutoSave],
+  );
+
+  const updateAsset = useCallback(
+    (asset: PersonalAssetType) => {
+      updateProjectDataAndAutoSave((currentProject) => {
+        if (!currentProject) return null;
+        return {
+          ...currentProject,
+          assets: (currentProject.assets || []).map((row) =>
+            row.id === asset.id
+              ? { ...asset, updatedAt: new Date().toISOString() }
+              : row,
+          ),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    },
+    [updateProjectDataAndAutoSave],
+  );
+
+  const deleteAsset = useCallback(
+    (assetId: ID) => {
+      updateProjectDataAndAutoSave((currentProject) => {
+        if (!currentProject) return null;
+        return {
+          ...currentProject,
+          assets: (currentProject.assets || []).filter(
+            (row) => row.id !== assetId,
+          ),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    },
+    [updateProjectDataAndAutoSave],
+  );
+
   const upsertEntityType = useCallback(
     (entityType: DynamicEntityType) => {
       updateProjectDataAndAutoSave((currentProject) => {
@@ -2093,6 +2267,14 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
         deleteSourceDocument,
         addTask,
         updateTask,
+        addAsset,
+        updateAsset,
+        deleteAsset,
+        addFinanceSource,
+        updateFinanceSource,
+        deleteFinanceSource,
+        updateFinanceSettings,
+        updateProfile,
         upsertEntityType,
         deleteEntityType,
         addGenericEntity,

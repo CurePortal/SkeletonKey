@@ -97,7 +97,7 @@ function ensureProjectShape(project) {
     timeline.branchFromEventId = timeline.branchFromEventId ?? null;
     timeline.tags = Array.isArray(timeline.tags) ? timeline.tags : [];
   }
-  for (const key of ["characters", "locations", "technologies", "cultures", "sourceDocuments", "narratives", "reports", "tasks", "caseDocuments", "links", "fieldNotes", "entityTypes", "entities"]) {
+  for (const key of ["characters", "locations", "technologies", "cultures", "sourceDocuments", "narratives", "reports", "tasks", "caseDocuments", "assets", "financeSources", "links", "fieldNotes", "entityTypes", "entities"]) {
     out[key] = Array.isArray(out[key]) ? out[key] : [];
   }
   out.deletedIds = Array.isArray(out.deletedIds) ? out.deletedIds.map(String) : [];
@@ -478,6 +478,138 @@ function upsertTask(input) {
   return row;
 }
 
+function upsertProfile(input) {
+  const stamp = now();
+  const current = project.profile || {};
+  const row = {
+    name: input.name ?? current.name ?? "",
+    callsign: input.callsign ?? current.callsign ?? "",
+    pronouns: input.pronouns ?? current.pronouns ?? "",
+    timezone: input.timezone ?? current.timezone ?? "",
+    homeBase: input.homeBase ?? current.homeBase ?? "",
+    languages: input.languages ?? current.languages ?? "",
+    communicationStyle:
+      input.communicationStyle ?? current.communicationStyle ?? "",
+    accessibilityNeeds:
+      input.accessibilityNeeds ?? current.accessibilityNeeds ?? "",
+    healthNotes: input.healthNotes ?? current.healthNotes ?? "",
+    constraints: input.constraints ?? current.constraints ?? "",
+    skills: input.skills ?? current.skills ?? "",
+    resources: input.resources ?? current.resources ?? "",
+    routines: input.routines ?? current.routines ?? "",
+    currentObjectives:
+      input.currentObjectives ?? current.currentObjectives ?? "",
+    importantPeople: input.importantPeople ?? current.importantPeople ?? "",
+    dislikes: input.dislikes ?? current.dislikes ?? "",
+    notes: input.notes ?? current.notes ?? "",
+    tags: Array.isArray(input.tags)
+      ? input.tags.slice(0, 50)
+      : Array.isArray(current.tags)
+        ? current.tags
+        : [],
+    updatedAt: stamp,
+  };
+  project.profile = row;
+  return row;
+}
+
+function upsertFinanceSource(input) {
+  const name = String(input.name || "").trim();
+  if (!name) throw new Error("finance source name is required");
+  const list = Array.isArray(project.financeSources)
+    ? project.financeSources
+    : (project.financeSources = []);
+  const existing = input.id
+    ? list.find((row) => row.id === input.id)
+    : list.find(
+        (row) =>
+          String(row.name || "").trim().toLowerCase() === name.toLowerCase(),
+      );
+  const stamp = now();
+  const row = {
+    ...(existing || {}),
+    id: existing?.id || input.id || uid(),
+    name: name.slice(0, 200),
+    kind: ["beancount", "stripe", "crypto", "bank", "manual", "other"].includes(
+      input.kind,
+    )
+      ? input.kind
+      : existing?.kind || "other",
+    status: ["active", "paused", "error"].includes(input.status)
+      ? input.status
+      : existing?.status || "active",
+    ledgerAccount: input.ledgerAccount ?? existing?.ledgerAccount ?? "",
+    envVar: input.envVar ?? existing?.envVar ?? "",
+    reference: input.reference ?? existing?.reference ?? "",
+    chain: input.chain ?? existing?.chain ?? "",
+    notes: input.notes ?? existing?.notes ?? "",
+    tags: Array.isArray(input.tags)
+      ? input.tags.slice(0, 50)
+      : Array.isArray(existing?.tags)
+        ? existing.tags
+        : [],
+    lastSync: input.lastSync ?? existing?.lastSync ?? "",
+    createdAt: existing?.createdAt || stamp,
+    updatedAt: stamp,
+  };
+  if (existing) {
+    const index = list.findIndex((item) => item.id === existing.id);
+    list[index] = row;
+  } else {
+    list.push(row);
+  }
+  return row;
+}
+
+function upsertAsset(input) {
+  const name = String(input.name || "").trim();
+  if (!name) throw new Error("asset name is required");
+  const list = Array.isArray(project.assets) ? project.assets : (project.assets = []);
+  const existing = input.id
+    ? list.find((row) => row.id === input.id)
+    : list.find(
+        (row) =>
+          String(row.name || "").trim().toLowerCase() === name.toLowerCase(),
+      );
+  const stamp = now();
+  const row = {
+    ...(existing || {}),
+    id: existing?.id || input.id || uid(),
+    name: name.slice(0, 200),
+    category: input.category || existing?.category || "Other",
+    quantity:
+      input.quantity != null
+        ? Math.max(0, Number(input.quantity) || 0)
+        : existing?.quantity ?? 1,
+    condition: input.condition ?? existing?.condition ?? "",
+    status: ["owned", "loaned", "stored", "sold", "lost"].includes(input.status)
+      ? input.status
+      : existing?.status || "owned",
+    location: input.location ?? existing?.location ?? "",
+    serialNumber: input.serialNumber ?? existing?.serialNumber ?? "",
+    value:
+      input.value != null
+        ? Number(input.value)
+        : existing?.value ?? null,
+    acquiredDate: input.acquiredDate ?? existing?.acquiredDate ?? "",
+    notes: input.notes ?? existing?.notes ?? "",
+    tags: Array.isArray(input.tags)
+      ? input.tags.slice(0, 50)
+      : Array.isArray(existing?.tags)
+        ? existing.tags
+        : [],
+    createdAt: existing?.createdAt || stamp,
+    updatedAt: stamp,
+  };
+  if (existing) {
+    const index = list.findIndex((item) => item.id === existing.id);
+    list[index] = row;
+  } else {
+    list.push(row);
+  }
+  return row;
+}
+
 function upsertReport(input) {
   const title = String(input.title || "").trim();
   if (!title) throw new Error("report title is required");
@@ -723,7 +855,11 @@ function status() {
       characters: project.characters.length,
       sourceDocuments: project.sourceDocuments.length,
       narratives: project.narratives.length,
+      assets: (project.assets || []).length,
+      financeSources: (project.financeSources || []).length,
+      reports: (project.reports || []).length,
     },
+    hasProfile: Boolean(project.profile?.name || project.profile?.notes),
     storage: { projectFile: PROJECT_FILE, bridge: HQ_BRIDGE, http: `http://${HOST}:${PORT}` },
     beaconTokenConfigured: Boolean(BEACON_TOKEN),
   };
@@ -936,6 +1072,154 @@ server.registerTool(
 );
 
 server.registerTool(
+  "skeleton_profile_get",
+  {
+    title: "Read the operative's personnel file",
+    description:
+      "Read the operative's profile: how they want to be handled, constraints, needs, resources, objectives, and preferences. Read this before giving advice or making changes. Read-only.",
+    inputSchema: {},
+  },
+  async () => ({
+    content: [
+      {
+        type: "text",
+        text: project.profile
+          ? JSON.stringify(project.profile, null, 2)
+          : "No personnel file recorded yet.",
+      },
+    ],
+  }),
+);
+
+server.registerTool(
+  "skeleton_profile_update",
+  {
+    title: "Update the operative's personnel file",
+    description:
+      "Update the operative's profile fields. Only send the fields that changed; the rest are preserved. Changes state; ask first.",
+    inputSchema: {
+      name: z.string().optional(),
+      callsign: z.string().optional(),
+      pronouns: z.string().optional(),
+      timezone: z.string().optional(),
+      homeBase: z.string().optional(),
+      languages: z.string().optional(),
+      communicationStyle: z.string().optional(),
+      accessibilityNeeds: z.string().optional(),
+      healthNotes: z.string().optional(),
+      constraints: z.string().optional(),
+      skills: z.string().optional(),
+      resources: z.string().optional(),
+      routines: z.string().optional(),
+      currentObjectives: z.string().optional(),
+      importantPeople: z.string().optional(),
+      dislikes: z.string().optional(),
+      notes: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+    },
+  },
+  async (input) => {
+    const profile = upsertProfile(input);
+    save();
+    return { content: [{ type: "text", text: JSON.stringify(profile, null, 2) }] };
+  },
+);
+
+server.registerTool(
+  "skeleton_finance_info",
+  {
+    title: "Read the finance and Beancount setup",
+    description:
+      "Return the Beancount ledger path, Fava URL, finance sources, and the local beancount MCP instance details. Use this before answering money questions or adding finance sources. Read-only.",
+    inputSchema: {},
+  },
+  async () => ({
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          {
+            settings: project.financeSettings || {
+              ledgerFile: process.env.BEANCOUNT_FILE || "~/beancount/main.beancount",
+              favaUrl: "http://127.0.0.1:5000",
+            },
+            sources: project.financeSources || [],
+            beancountMcp: {
+              command: "mcp-beancount",
+              env: {
+                BEANCOUNT_FILE:
+                  project.financeSettings?.ledgerFile ||
+                  process.env.BEANCOUNT_FILE ||
+                  "~/beancount/main.beancount",
+              },
+              favaCommand: "~/.local/bin/beancount-server",
+            },
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  }),
+);
+
+server.registerTool(
+  "skeleton_finance_source_upsert",
+  {
+    title: "Add or update a finance source",
+    description:
+      "Configure a Beancount ledger, Stripe, crypto wallet, bank, or other money source. Never store API secrets; use an env var name. Changes state; ask first.",
+    inputSchema: {
+      id: z.string().optional(),
+      name: z.string(),
+      kind: z
+        .enum(["beancount", "stripe", "crypto", "bank", "manual", "other"])
+        .optional(),
+      status: z.enum(["active", "paused", "error"]).optional(),
+      ledgerAccount: z.string().optional(),
+      envVar: z.string().optional(),
+      reference: z.string().optional(),
+      chain: z.string().optional(),
+      notes: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+    },
+  },
+  async (input) => {
+    const source = upsertFinanceSource(input);
+    save();
+    return { content: [{ type: "text", text: JSON.stringify(source, null, 2) }] };
+  },
+);
+
+server.registerTool(
+  "skeleton_asset_upsert",
+  {
+    title: "Add or update a personal asset",
+    description:
+      "Record something the operative owns or has at their disposal: tools, electronics, vehicles, documents, and so on. Upserts by name or id. Changes state; ask first.",
+    inputSchema: {
+      id: z.string().optional(),
+      name: z.string(),
+      category: z.string().optional(),
+      quantity: z.number().optional(),
+      condition: z.string().optional(),
+      status: z.enum(["owned", "loaned", "stored", "sold", "lost"]).optional(),
+      location: z.string().optional(),
+      serialNumber: z.string().optional(),
+      value: z.number().optional(),
+      acquiredDate: z.string().optional(),
+      notes: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+    },
+  },
+  async (input) => {
+    const asset = upsertAsset(input);
+    save();
+    return { content: [{ type: "text", text: JSON.stringify(asset, null, 2) }] };
+  },
+);
+
+server.registerTool(
   "skeleton_task_upsert",
   {
     title: "Create or edit a task",
@@ -1144,6 +1428,12 @@ function runProjectAction(action) {
   switch (kind) {
     case "task.upsert":
       return upsertTask(args);
+    case "asset.upsert":
+      return upsertAsset(args);
+    case "finance.source.upsert":
+      return upsertFinanceSource(args);
+    case "profile.update":
+      return upsertProfile(args);
     case "report.upsert":
       return upsertReport(args);
     case "kb.type.upsert":

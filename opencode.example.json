@@ -51,6 +51,16 @@
       ],
       "cwd": "/ABS/PATH/TO/SkeletonKey/integrations/crypto-watch",
       "enabled": true
+    },
+    "beancount-skeletonkey": {
+      "type": "local",
+      "command": [
+        "/ABS/PATH/TO/beancount/.venv/bin/mcp-beancount"
+      ],
+      "enabled": true,
+      "environment": {
+        "BEANCOUNT_FILE": "/ABS/PATH/TO/Documents/SkeletonKey/finances.beancount"
+      }
     }
   },
   "provider": {

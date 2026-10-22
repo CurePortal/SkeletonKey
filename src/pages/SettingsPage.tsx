@@ -50,6 +50,7 @@ import {
   FiSquare,
   FiTerminal,
   FiServer,
+  FiDollarSign,
 } from "react-icons/fi";
 import {
   cancelSetupJob,
@@ -70,6 +71,7 @@ const SettingsPage: React.FC = () => {
     project,
     setProject,
     hasUnsavedChanges,
+    updateFinanceSettings,
   } = useProjectData();
   const { showSuccess, showError, showInfo } = useNotification();
 
@@ -90,6 +92,16 @@ const SettingsPage: React.FC = () => {
   const [cartoKey, setCartoKey] = useState(
     () => getMapTileSettings().cartoKey,
   );
+
+  const [financeLedger, setFinanceLedger] = useState(
+    project?.financeSettings?.ledgerFile || "~/beancount/main.beancount",
+  );
+  const [financeFava, setFinanceFava] = useState(
+    project?.financeSettings?.favaUrl || "http://127.0.0.1:5000",
+  );
+  const [financeStatus, setFinanceStatus] = useState<
+    "unknown" | "checking" | "reachable" | "unreachable"
+  >("unknown");
 
   const [geoUrl, setGeoUrl] = useState(bridgeUrl());
   const [hqBase, setHqBase] = useState(hqUrl());
@@ -169,6 +181,29 @@ const SettingsPage: React.FC = () => {
     } finally {
       setTestingGeo(false);
     }
+  };
+
+  const checkFinanceServer = async () => {
+    setFinanceStatus("checking");
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      await fetch(financeFava, {
+        mode: "no-cors",
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      clearTimeout(timer);
+      setFinanceStatus("reachable");
+    } catch {
+      setFinanceStatus("unreachable");
+    }
+  };
+
+  const saveFinance = () => {
+    updateFinanceSettings({ ledgerFile: financeLedger, favaUrl: financeFava });
+    showSuccess("Finance settings saved.");
+    void checkFinanceServer();
   };
 
   const saveServices = async () => {
@@ -637,6 +672,84 @@ const SettingsPage: React.FC = () => {
             </Button>
             <Button variant="primary" leftIcon={<FiSave className="h-4 w-4" />} onClick={() => void saveServices()}>
               Save services
+            </Button>
+          </div>
+        </section>
+
+        <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-1">
+            <FiDollarSign className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Finances · Beancount
+            </h2>
+            <span
+              className={`ml-2 text-[11px] px-2 py-0.5 rounded-full border ${
+                financeStatus === "reachable"
+                  ? "border-green-600 text-green-700 dark:text-green-400"
+                  : financeStatus === "unreachable"
+                    ? "border-amber-500 text-amber-700 dark:text-amber-400"
+                    : "border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400"
+              }`}
+            >
+              {financeStatus === "reachable"
+                ? "Fava connected"
+                : financeStatus === "unreachable"
+                  ? "Fava offline"
+                  : financeStatus === "checking"
+                    ? "checking"
+                    : "not checked"}
+            </span>
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+            Point SkeletonKey at a Beancount ledger and its local Fava server.
+            The Beancount MCP (<code>mcp-beancount</code>) can read the same
+            file for agents. Start Fava with{" "}
+            <code>~/.local/bin/beancount-server</code>.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                Ledger file
+              </label>
+              <input
+                className={inputClass}
+                value={financeLedger}
+                onChange={(event) => setFinanceLedger(event.target.value)}
+                placeholder="~/beancount/main.beancount"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                Fava URL
+              </label>
+              <input
+                className={inputClass}
+                value={financeFava}
+                onChange={(event) => setFinanceFava(event.target.value)}
+                placeholder="http://127.0.0.1:5000"
+              />
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+            Set <code>BEANCOUNT_FILE</code> for the MCP server. Never store API
+            keys in the project; use environment variable names on finance
+            sources instead.
+          </p>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              leftIcon={<FiRefreshCw className="h-4 w-4" />}
+              onClick={() => void checkFinanceServer()}
+              disabled={financeStatus === "checking"}
+            >
+              Test Fava
+            </Button>
+            <Button
+              variant="primary"
+              leftIcon={<FiSave className="h-4 w-4" />}
+              onClick={saveFinance}
+            >
+              Save finances
             </Button>
           </div>
         </section>

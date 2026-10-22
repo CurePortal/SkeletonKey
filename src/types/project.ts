@@ -240,6 +240,74 @@ export interface TaskNote {
   text: string;
 }
 
+export interface OperativeProfileType {
+  name: string;
+  callsign: string;
+  pronouns: string;
+  timezone: string;
+  homeBase: string;
+  languages: string;
+  communicationStyle: string;
+  accessibilityNeeds: string;
+  healthNotes: string;
+  constraints: string;
+  skills: string;
+  resources: string;
+  routines: string;
+  currentObjectives: string;
+  importantPeople: string;
+  dislikes: string;
+  notes: string;
+  tags: string[];
+  updatedAt: string;
+}
+
+export type FinanceSourceKind =
+  | "beancount"
+  | "stripe"
+  | "crypto"
+  | "bank"
+  | "manual"
+  | "other";
+
+export interface FinanceSourceType {
+  id: ID;
+  name: string;
+  kind: FinanceSourceKind;
+  status: "active" | "paused" | "error";
+  ledgerAccount: string;
+  envVar: string;
+  reference: string;
+  chain: string;
+  notes: string;
+  tags: string[];
+  lastSync: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FinanceSettingsType {
+  ledgerFile: string;
+  favaUrl: string;
+}
+
+export interface PersonalAssetType {
+  id: ID;
+  name: string;
+  category: string;
+  quantity: number;
+  condition: string;
+  status: "owned" | "loaned" | "stored" | "sold" | "lost";
+  location: string;
+  serialNumber: string;
+  value: number | null;
+  acquiredDate: string;
+  notes: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface TaskType {
   id: ID;
   title: string;
@@ -288,6 +356,10 @@ export interface ProjectType {
   deletedIds?: ID[];
   tasks?: TaskType[];
   caseDocuments?: CaseDocumentType[];
+  assets?: PersonalAssetType[];
+  financeSources?: FinanceSourceType[];
+  financeSettings?: FinanceSettingsType;
+  profile?: OperativeProfileType;
   entityTypes?: DynamicEntityType[];
   entities?: GenericEntity[];
   mapData?: {

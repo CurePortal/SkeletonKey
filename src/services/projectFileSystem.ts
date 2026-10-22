@@ -69,6 +69,8 @@ export async function saveProjectToFileSystem(
       { id: "report", name: "Report", isBuiltIn: true, version: "1.0.0" },
       { id: "task", name: "Task", isBuiltIn: true, version: "1.0.0" },
       { id: "caseDocument", name: "Case Document", isBuiltIn: true, version: "1.0.0" },
+      { id: "asset", name: "Personal Asset", isBuiltIn: true, version: "1.0.0" },
+      { id: "financeSource", name: "Finance Source", isBuiltIn: true, version: "1.0.0" },
     ];
 
     // Add custom/configured entity types if this project has them.
@@ -113,6 +115,8 @@ export async function saveProjectToFileSystem(
       { type: "report", entities: project.reports || [] },
       { type: "task", entities: project.tasks || [] },
       { type: "caseDocument", entities: project.caseDocuments || [] },
+      { type: "asset", entities: (project as any).assets || [] },
+      { type: "financeSource", entities: (project as any).financeSources || [] },
     ];
 
     for (const group of entityGroups) {
@@ -188,6 +192,8 @@ export async function saveProjectToFileSystem(
       deletedIds: (project as any).deletedIds || [],
       entityIndex: entityIndex,
       entityTypes: configuredTypes,
+      financeSettings: (project as any).financeSettings,
+      profile: (project as any).profile,
       format: "unified-zip",
       hasCustomTypes: isEnhanced,
     };
@@ -311,6 +317,10 @@ export async function loadProjectFromFileSystem(
       reports: [],
       tasks: [],
       caseDocuments: [],
+      assets: [],
+      financeSources: [],
+      financeSettings: projectMetadata.financeSettings,
+      profile: projectMetadata.profile,
     };
 
     // Load entities based on index
@@ -327,6 +337,8 @@ export async function loadProjectFromFileSystem(
       { field: "reports", type: "report" },
       { field: "tasks", type: "task" },
       { field: "caseDocuments", type: "caseDocument" },
+      { field: "assets", type: "asset" },
+      { field: "financeSources", type: "financeSource" },
     ];
 
     for (const { field, type } of builtInTypes) {
