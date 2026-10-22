@@ -44,8 +44,27 @@ Restart=on-failure
 WantedBy=default.target
 UNIT
 
+cat >"$UNIT_DIR/skeletonkey-fava.service" <<UNIT
+[Unit]
+Description=SkeletonKey local Beancount/Fava books
+After=network.target
+ConditionPathExists=%h/beancount/.venv/bin/fava
+ConditionPathExists=%h/Documents/SkeletonKey/finances/main.beancount
+
+[Service]
+Type=simple
+WorkingDirectory=$REPO_DIR
+ExecStart=/usr/bin/env bash $REPO_DIR/tools/beancount-server.sh --foreground
+Environment=BEANCOUNT_FILE=%h/Documents/SkeletonKey/finances/main.beancount
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT
+
 systemctl --user daemon-reload
-systemctl --user enable --now skeletonkey-geo.service skeletonkey-mcp.service || true
+systemctl --user enable --now skeletonkey-geo.service skeletonkey-mcp.service skeletonkey-fava.service || true
 
 for port in 8788 8799; do
   if curl -fsS --max-time 3 "http://127.0.0.1:$port/health" >/dev/null 2>&1; then

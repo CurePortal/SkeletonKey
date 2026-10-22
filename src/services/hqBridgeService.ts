@@ -101,6 +101,8 @@ export interface HqActionResponse {
 
 export interface BeancountStatus {
   ok: boolean;
+  reachable?: boolean;
+  error?: string | null;
   favaUrl: string;
   root: string;
   ledgerFile: string;

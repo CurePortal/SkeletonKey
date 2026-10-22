@@ -1,0 +1,16 @@
+[Unit]
+Description=SkeletonKey local Beancount/Fava books
+After=network.target
+ConditionPathExists=%h/beancount/.venv/bin/fava
+ConditionPathExists=%h/Documents/SkeletonKey/finances/main.beancount
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Projects/SkeletonKey
+ExecStart=/usr/bin/env bash %h/Projects/SkeletonKey/tools/beancount-server.sh --foreground
+Environment=BEANCOUNT_FILE=%h/Documents/SkeletonKey/finances/main.beancount
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

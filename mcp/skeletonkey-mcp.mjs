@@ -1802,15 +1802,31 @@ async function favaRoot() {
       redirect: "follow",
       signal: AbortSignal.timeout(8000),
     });
+    if (!response.ok) {
+      return {
+        root: base,
+        reachable: false,
+        error: `Fava answered HTTP ${response.status}`,
+      };
+    }
     const segment = new URL(response.url).pathname.split("/").filter(Boolean)[0];
-    return segment ? `${base}/${segment}` : base;
-  } catch {
-    return base;
+    return {
+      root: segment ? `${base}/${segment}` : base,
+      reachable: true,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      root: base,
+      reachable: false,
+      error: `Fava is not reachable at ${base}: ${String(error?.message || error).slice(0, 200)}`,
+    };
   }
 }
 
 async function favaApi(path) {
-  const root = await favaRoot();
+  const { root, reachable, error } = await favaRoot();
+  if (!reachable) throw new Error(error || "Fava is not reachable");
   const response = await fetch(`${root}/api/${path}`, {
     signal: AbortSignal.timeout(15000),
   });
@@ -1912,11 +1928,13 @@ const http = createServer(async (req, res) => {
       return jsonResponse(res, 200, status());
     }
     if (req.method === "GET" && url.pathname === "/beancount/status") {
-      const root = await favaRoot();
+      const fava = await favaRoot();
       return jsonResponse(res, 200, {
-        ok: true,
+        ok: fava.reachable,
+        reachable: fava.reachable,
+        error: fava.error,
         favaUrl: favaBase(),
-        root,
+        root: fava.root,
         ledgerFile:
           project.financeSettings?.ledgerFile ||
           process.env.BEANCOUNT_FILE ||

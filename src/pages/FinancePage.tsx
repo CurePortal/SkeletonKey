@@ -125,12 +125,16 @@ const FinancePage: React.FC = () => {
     () => project?.financeSources || [],
     [project?.financeSources],
   );
+  const booksConnected = Boolean(status?.reachable ?? status?.ok);
 
   const loadFinance = async () => {
     setStatusError("");
     try {
       const nextStatus = await beancountStatus();
       setStatus(nextStatus);
+      if (nextStatus.reachable === false || nextStatus.ok === false) {
+        setStatusError(nextStatus.error || "Fava is not reachable.");
+      }
       const [bs, is] = await Promise.all([
         beancountReport("balance_sheet").catch(() => null),
         beancountReport("income_statement").catch(() => null),
@@ -396,7 +400,7 @@ const FinancePage: React.FC = () => {
                       : "text-amber-600 dark:text-amber-400"
                   }`}
                 >
-                  {status ? "Fava connected" : "offline"}
+                  {booksConnected ? "Fava connected" : "offline"}
                 </span>
               </div>
               <p className="mt-2 break-all text-xs text-gray-500 dark:text-gray-400">
@@ -495,7 +499,7 @@ const FinancePage: React.FC = () => {
 
       {tab === "books" && (
         <div className="space-y-2">
-          {status ? (
+          {booksConnected && status ? (
             <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
               <iframe
                 title="Beancount · Fava"
@@ -512,6 +516,11 @@ const FinancePage: React.FC = () => {
                 Start it with <code>npm run beancount</code>. Ledger and Fava
                 URL are configured in Settings → Finances.
               </p>
+              {status?.error && (
+                <p className="mt-2 break-all text-xs text-gray-500 dark:text-gray-400">
+                  {status.error}
+                </p>
+              )}
               {statusError && (
                 <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
                   {statusError}

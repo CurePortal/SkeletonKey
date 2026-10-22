@@ -172,6 +172,8 @@ const DashboardPage: React.FC = () => {
     { label: "Valhalla", on: health?.valhalla },
     { label: "Gazetteer", on: health?.gazetteer },
     { label: "Ollama", on: health?.ollama },
+    { label: "Beancount", on: health?.beancount },
+    { label: "Fava", on: health?.fava },
   ];
 
   return (

@@ -45,6 +45,10 @@ const VALHALLA = (process.env.VALHALLA_URL || "http://127.0.0.1:8002").replace(/
 const BEACON = (process.env.BEACON_URL || "http://127.0.0.1:8787").replace(/\/$/, "");
 const OPENCODE = (process.env.OPENCODE_URL || "http://127.0.0.1:4096").replace(/\/$/, "");
 const OLLAMA = (process.env.OLLAMA_URL || "http://127.0.0.1:11434").replace(/\/$/, "");
+const FAVA = (process.env.FAVA_URL || "http://127.0.0.1:5001").replace(/\/$/, "");
+const BEANCOUNT_FILE =
+  process.env.BEANCOUNT_FILE ||
+  `${homedir()}/Documents/SkeletonKey/finances/main.beancount`;
 const OLLAMA_CONFIG =
   process.env.OLLAMA_CONFIG || `${homedir()}/.ollama/config.json`;
 const FIELDLOG_DB =
@@ -299,12 +303,14 @@ async function handle(req, res) {
         return false;
       }
     };
-    const [valhallaStatus, beaconOk, opencodeOk, ollamaOk] = await Promise.all([
-      valhalla("status", {}).catch(() => null),
-      check(`${BEACON}/health`),
-      check(`${OPENCODE}/global/health`),
-      check(`${OLLAMA}/api/tags`),
-    ]);
+    const [valhallaStatus, beaconOk, opencodeOk, ollamaOk, favaOk] =
+      await Promise.all([
+        valhalla("status", {}).catch(() => null),
+        check(`${BEACON}/health`),
+        check(`${OPENCODE}/global/health`),
+        check(`${OLLAMA}/api/tags`),
+        check(`${FAVA}/`),
+      ]);
     json(res, 200, {
       ok: Boolean(valhallaStatus),
       gazetteer: Boolean(gaz),
@@ -317,6 +323,10 @@ async function handle(req, res) {
       opencodeUrl: OPENCODE,
       ollama: ollamaOk,
       ollamaUrl: OLLAMA,
+      fava: favaOk,
+      favaUrl: FAVA,
+      beancount: existsSync(BEANCOUNT_FILE),
+      beancountFile: BEANCOUNT_FILE,
       version: valhallaStatus?.version || "",
     });
     return;

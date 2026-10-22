@@ -71,6 +71,10 @@ export interface LocalHealth {
   opencodeUrl: string;
   ollama?: boolean;
   ollamaUrl?: string;
+  fava?: boolean;
+  favaUrl?: string;
+  beancount?: boolean;
+  beancountFile?: string;
   version: string;
 }
 
