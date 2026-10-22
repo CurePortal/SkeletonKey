@@ -412,6 +412,46 @@ Agents read the record through a sanitized mirror and propose changes with
 `hq_command`. The app applies a change only while the operator has HQ link
 enabled. Nothing is written silently.
 
+### Automatic fill from the beacon
+
+The beacon daemon is not only a passive position store. It fills the record
+from what the phone already reports:
+
+- **Stays -> places.** A run of low-speed fixes away from home becomes a
+  location (name from the local gazetteer) and a `Beacon` timeline event such as
+  `Visited Sequoia Cider Mill — likely a meal or drink`.
+- **Narratives.** Each visit is appended to the **Field Narrative**, and a
+  **Field Report · <date>** collects the day's distance, movement, dwell, and
+  visits.
+- **Uncertainty is explicit.** Purpose comes from the venue category (food,
+  health, shopping, work, transit, ...), not from guesses. Auto records carry
+  `needs-confirmation` until the operative confirms them; the event description
+  says what was inferred and what still needs checking.
+- **Microphone text** follows the separate ambient extractor and fills the
+  knowledge base with people, organizations, places, technologies, and events.
+
+The visit watcher runs inside `beacond` every minute and backfills the last two
+weeks on first start. Tune it with `VISIT_MIN_MS`, `VISIT_RADIUS_M`,
+`VISIT_LOOKBACK_DAYS`, `VISIT_SCAN_MS`, and `VISIT_HOME_RADIUS_M`. The gazetteer
+is local (`~/maps/overlay/overlay.sqlite`); if it is missing, the record still
+gets coordinates but no venue names.
+
+### Sources are the data map
+
+The **Sources** list is the record's map of inputs, not just uploaded files.
+On startup the `skeletonkey` MCP registers the feeds the suite already uses:
+Open-Meteo weather and air quality, USGS earthquakes, NIFC wildfire perimeters,
+the phone beacon stream, and the local geo service. Each is marked
+`sourceType: api` or `stream` with its endpoint and refresh interval.
+
+- Add a feed discovered in chat with `skeleton_source_upsert` (or
+  `source.upsert` through the action bridge).
+- Add a new built-in feed by appending it to `KNOWN_SOURCES` in
+  `mcp/skeletonkey-mcp.mjs`; it is registered on the next start.
+- Never put API keys in the record; store the env-var name in `notes`.
+- `skeleton_sources` lists the current map, including both UI-added and
+  chat-added sources.
+
 Two storage locations are involved by design:
 
 | Store | Path | Purpose |

@@ -102,7 +102,7 @@ const MapLocalPanel: React.FC<MapLocalPanelProps> = ({
       return false;
     }
   });
-  const [follow, setFollow] = useState(false);
+  const [follow, setFollow] = useState(true);
   const [historyDays, setHistoryDays] = useState(() => {
     try {
       return Number(localStorage.getItem("sk-track-days")) || 7;

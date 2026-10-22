@@ -155,3 +155,49 @@ body.light,
 .dark .notes-editor a {
     color: #60a5fa;
 }
+
+/* React Flow: dark-mode friendly controls, minimap, and attribution. */
+.dark .react-flow__controls {
+    box-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+}
+
+.dark .react-flow__background circle {
+    fill: #4b5563;
+}
+
+.dark .react-flow__controls-button {
+    background-color: #1f2937;
+    border-bottom: 1px solid #374151;
+    color: #e5e7eb;
+}
+
+.dark .react-flow__controls-button:hover {
+    background-color: #374151;
+}
+
+.dark .react-flow__controls-button svg {
+    fill: currentColor;
+}
+
+.dark .react-flow__minimap {
+    background-color: #111827;
+    border: 1px solid #374151;
+    border-radius: 0.375rem;
+}
+
+.dark .react-flow__minimap-mask {
+    fill: rgba(17, 24, 39, 0.65);
+}
+
+.dark .react-flow__minimap-node {
+    fill: #4b5563;
+    stroke: none;
+}
+
+.dark .react-flow__attribution {
+    background-color: rgba(17, 24, 39, 0.75);
+}
+
+.dark .react-flow__attribution a {
+    color: #9ca3af;
+}

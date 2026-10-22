@@ -77,6 +77,7 @@ function newProject(name = "HQ Field Record") {
     locations: [],
     technologies: [],
     cultures: [],
+    sources: [],
     sourceDocuments: [],
     narratives: [],
     mapData: defaultMapData(),
@@ -97,12 +98,282 @@ function ensureProjectShape(project) {
     timeline.branchFromEventId = timeline.branchFromEventId ?? null;
     timeline.tags = Array.isArray(timeline.tags) ? timeline.tags : [];
   }
-  for (const key of ["characters", "locations", "technologies", "cultures", "sourceDocuments", "narratives", "reports", "tasks", "caseDocuments", "assets", "financeSources", "links", "fieldNotes", "entityTypes", "entities"]) {
+  for (const key of ["characters", "locations", "technologies", "cultures", "sources", "sourceDocuments", "narratives", "reports", "tasks", "caseDocuments", "assets", "financeSources", "links", "fieldNotes", "entityTypes", "entities"]) {
     out[key] = Array.isArray(out[key]) ? out[key] : [];
+  }
+  // The app treats `sources` as canonical; older code and some MCP tools wrote
+  // only `sourceDocuments`. Merge both so nothing added through chat or the UI
+  // disappears on the next sync.
+  {
+    const byKey = new Map();
+    for (const row of [...out.sources, ...out.sourceDocuments]) {
+      if (!row || typeof row !== "object") continue;
+      const key = String(
+        row.id || row.apiEndpoint || row.streamUrl || row.url || row.title || "",
+      ).toLowerCase();
+      if (!key) continue;
+      const previous = byKey.get(key);
+      if (!previous) {
+        byKey.set(key, row);
+        continue;
+      }
+      const previousTime = Date.parse(previous.updatedAt || previous.createdAt || "") || 0;
+      const rowTime = Date.parse(row.updatedAt || row.createdAt || "") || 0;
+      byKey.set(
+        key,
+        rowTime >= previousTime ? { ...previous, ...row } : { ...row, ...previous },
+      );
+    }
+    out.sources = [...byKey.values()];
+    out.sourceDocuments = out.sources;
   }
   out.deletedIds = Array.isArray(out.deletedIds) ? out.deletedIds.map(String) : [];
   out.mapData = { ...defaultMapData(), ...(out.mapData || {}) };
   return out;
+}
+
+// External feeds the suite already depends on. Add a new API/stream here and
+// ensureKnownSources() will register it in the record on the next start, so the
+// Sources list reflects what HQ actually reads rather than only manual uploads.
+const KNOWN_SOURCES = [
+  {
+    id: "source-open-meteo-forecast",
+    title: "Open-Meteo — Weather Forecast",
+    description:
+      "Current conditions and short-range forecast for the operative's area. Coordinates are truncated to a ~5 km grid before each request.",
+    authors: ["Open-Meteo"],
+    type: "api",
+    sourceType: "api",
+    apiEndpoint: "https://api.open-meteo.com/v1/forecast",
+    httpMethod: "GET",
+    authType: "none",
+    responseFormat: "json",
+    pollingInterval: 1800,
+    connectionStatus: "connected",
+    tags: ["api", "weather", "open-meteo", "stream", "hq"],
+    notes:
+      "Read by the beacon weather cache (`sousveillance/server/weather.mjs`) and HQ's beacon_weather tool. No API key.",
+  },
+  {
+    id: "source-open-meteo-air-quality",
+    title: "Open-Meteo — Air Quality",
+    description:
+      "US AQI and PM2.5 for the operative's area, used in weather and hazard checks. Coordinates are truncated to a ~5 km grid.",
+    authors: ["Open-Meteo"],
+    type: "api",
+    sourceType: "api",
+    apiEndpoint: "https://air-quality-api.open-meteo.com/v1/air-quality",
+    httpMethod: "GET",
+    authType: "none",
+    responseFormat: "json",
+    pollingInterval: 1800,
+    connectionStatus: "connected",
+    tags: ["api", "air-quality", "smoke", "open-meteo", "stream", "hq"],
+    notes:
+      "Read by the beacon weather cache (`sousveillance/server/weather.mjs`) and HQ's beacon_weather tool. No API key.",
+  },
+  {
+    id: "source-usgs-earthquakes",
+    title: "USGS — Earthquake Hazards",
+    description:
+      "Recent M2.5+ earthquakes within 200 km of the operative, cached for hazard warnings.",
+    authors: ["USGS"],
+    type: "api",
+    sourceType: "api",
+    apiEndpoint: "https://earthquake.usgs.gov/fdsnws/event/1/query",
+    httpMethod: "GET",
+    authType: "none",
+    responseFormat: "json",
+    pollingInterval: 1800,
+    connectionStatus: "connected",
+    tags: ["api", "hazards", "seismic", "usgs", "stream", "hq"],
+    notes:
+      "Read by `sousveillance/server/hazards.mjs` and HQ's beacon_hazards tool. No API key.",
+  },
+  {
+    id: "source-nifc-wildfires",
+    title: "NIFC — Wildfire Perimeters",
+    description:
+      "Interagency wildfire perimeters within 200 km of the operative, cached for hazard warnings.",
+    authors: ["NIFC / WFIGS"],
+    type: "api",
+    sourceType: "api",
+    apiEndpoint:
+      "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters/FeatureServer/0/query",
+    httpMethod: "GET",
+    authType: "none",
+    responseFormat: "json",
+    pollingInterval: 1800,
+    connectionStatus: "connected",
+    tags: ["api", "hazards", "wildfire", "nifc", "stream", "hq"],
+    notes:
+      "Read by `sousveillance/server/hazards.mjs` and HQ's beacon_hazards tool. No API key.",
+  },
+  {
+    id: "source-phone-beacon",
+    title: "Phone Beacon — GPS & Telemetry",
+    description:
+      "Live position, track, battery, altitude, and ambient transcript from the operative's phone.",
+    authors: ["Beacon"],
+    type: "stream",
+    sourceType: "stream",
+    streamUrl: "ws://127.0.0.1:8787/stream",
+    streamType: "websocket",
+    authType: "none",
+    connectionStatus: "connected",
+    tags: ["stream", "beacon", "gps", "telemetry", "local"],
+    notes:
+      "Local beacond stream. Feeds positions, field-log digests, visits, and ambient extraction.",
+  },
+  {
+    id: "source-local-geo",
+    title: "Local Geo — Gazetteer & Routing",
+    description:
+      "Offline gazetteer (place names, POIs) and Valhalla routing used for reverse geocoding and directions.",
+    authors: ["Local"],
+    type: "api",
+    sourceType: "api",
+    apiEndpoint: "http://127.0.0.1:8788",
+    httpMethod: "GET",
+    authType: "none",
+    responseFormat: "json",
+    connectionStatus: "connected",
+    tags: ["api", "geo", "offline", "local"],
+    notes: "Loopback only; no network egress.",
+  },
+];
+
+function mergeSourceArrays() {
+  project.sources = Array.isArray(project.sources) ? project.sources : [];
+  project.sourceDocuments = project.sources;
+}
+
+function findSource(input) {
+  const list = Array.isArray(project.sources) ? project.sources : [];
+  const id = String(input?.id || "").trim();
+  const endpoint = String(
+    input?.apiEndpoint || input?.streamUrl || input?.url || "",
+  ).trim();
+  const title = String(input?.title || "").trim().toLowerCase();
+  return (
+    (id && list.find((row) => String(row.id) === id)) ||
+    (endpoint &&
+      list.find((row) =>
+        [row.apiEndpoint, row.streamUrl, row.url].filter(Boolean).some(
+          (value) => String(value) === endpoint,
+        ),
+      )) ||
+    (title &&
+      list.find(
+        (row) => String(row.title || "").trim().toLowerCase() === title,
+      )) ||
+    null
+  );
+}
+
+function buildSource(input, existing) {
+  const stamp = now();
+  const sourceType = ["file", "url", "api", "stream"].includes(input.sourceType)
+    ? input.sourceType
+    : existing?.sourceType || "api";
+  const row = {
+    ...(existing || {}),
+    id: existing?.id || input.id || uid(),
+    title: String(input.title || existing?.title || "Untitled source").slice(0, 200),
+    description: String(
+      input.description ?? existing?.description ?? "",
+    ).slice(0, 4000),
+    authors: Array.isArray(input.authors)
+      ? input.authors.map(String).slice(0, 20)
+      : existing?.authors || ["HQ"],
+    publicationDate: input.publicationDate ?? existing?.publicationDate ?? day(),
+    type: String(input.type || existing?.type || sourceType).slice(0, 80),
+    sourceType,
+    url: input.url ?? existing?.url ?? null,
+    filePath: input.filePath ?? existing?.filePath ?? null,
+    fileName: input.fileName ?? existing?.fileName ?? null,
+    apiEndpoint: input.apiEndpoint ?? existing?.apiEndpoint ?? null,
+    httpMethod: input.httpMethod ?? existing?.httpMethod,
+    authType: input.authType ?? existing?.authType ?? "none",
+    requestHeaders: input.requestHeaders ?? existing?.requestHeaders,
+    responseFormat: input.responseFormat ?? existing?.responseFormat ?? "json",
+    dataPath: input.dataPath ?? existing?.dataPath,
+    streamUrl: input.streamUrl ?? existing?.streamUrl ?? null,
+    streamType: input.streamType ?? existing?.streamType,
+    pollingInterval: input.pollingInterval ?? existing?.pollingInterval,
+    connectionStatus: input.connectionStatus ?? existing?.connectionStatus ?? "connected",
+    lastConnected: input.lastConnected ?? existing?.lastConnected,
+    lastDataUpdate: input.lastDataUpdate ?? existing?.lastDataUpdate,
+    dataCount: input.dataCount ?? existing?.dataCount ?? 0,
+    notes: String(input.notes ?? existing?.notes ?? "").slice(0, 20000),
+    tags: Array.isArray(input.tags)
+      ? [...new Set([...(existing?.tags || []), ...input.tags.map(String)])].slice(0, 50)
+      : existing?.tags || [],
+    citations: input.citations ?? existing?.citations ?? {},
+    createdAt: existing?.createdAt || stamp,
+    updatedAt: stamp,
+  };
+  // Secrets do not belong in the record; reference an env var in notes instead.
+  delete row.apiKey;
+  delete row.bearerToken;
+  delete row.basicAuthUsername;
+  delete row.basicAuthPassword;
+  delete row.webhookSecret;
+  return row;
+}
+
+function upsertSource(input, { known = false } = {}) {
+  mergeSourceArrays();
+  const existing = findSource(input);
+  let row;
+  if (existing && known) {
+    // Registry refresh: keep the operator's title/description/notes, but make
+    // sure the endpoint and stream type stay current.
+    row = {
+      ...existing,
+      sourceType: input.sourceType || existing.sourceType,
+      type: existing.type || input.type,
+      apiEndpoint: input.apiEndpoint || existing.apiEndpoint || null,
+      url: existing.url || input.url || null,
+      streamUrl: input.streamUrl || existing.streamUrl || null,
+      streamType: existing.streamType || input.streamType,
+      httpMethod: existing.httpMethod || input.httpMethod,
+      authType: existing.authType || input.authType || "none",
+      responseFormat: existing.responseFormat || input.responseFormat,
+      pollingInterval: existing.pollingInterval || input.pollingInterval,
+      description: existing.description || input.description || "",
+      connectionStatus: existing.connectionStatus || input.connectionStatus || "connected",
+      tags: [
+        ...new Set([...(existing.tags || []), ...(input.tags || [])]),
+      ].slice(0, 50),
+    };
+    const { updatedAt: _oldUpdatedAt, ...beforeRest } = existing;
+    const { updatedAt: _newUpdatedAt, ...afterRest } = row;
+    const changed = JSON.stringify(beforeRest) !== JSON.stringify(afterRest);
+    row.updatedAt = changed ? now() : existing.updatedAt;
+    const index = project.sources.findIndex((item) => item.id === existing.id);
+    project.sources[index] = row;
+    project.sourceDocuments = project.sources;
+    return { row, changed };
+  }
+
+  row = buildSource(input, existing);
+  if (existing) {
+    const index = project.sources.findIndex((item) => item.id === existing.id);
+    project.sources[index] = row;
+  } else {
+    project.sources.push(row);
+  }
+  project.sourceDocuments = project.sources;
+  return { row, changed: true };
+}
+
+function ensureKnownSources() {
+  let changed = false;
+  for (const known of KNOWN_SOURCES) {
+    if (upsertSource(known, { known: true }).changed) changed = true;
+  }
+  if (changed) save();
 }
 
 let project = existsSync(PROJECT_FILE)
@@ -117,6 +388,10 @@ function save() {
   writeFileSync(tmp, JSON.stringify(project, null, 2));
   renameSync(tmp, PROJECT_FILE);
 }
+
+// Register the external feeds the suite already uses (Open-Meteo, USGS, NIFC,
+// the phone beacon, local geo) so the Sources list is the real data map.
+ensureKnownSources();
 
 function mainTimeline() {
   return project.timelines.find((timeline) => timeline.isMainTimeline) || project.timelines[0];
@@ -750,6 +1025,7 @@ function addEvent(input) {
 function addSourceDocument(input) {
   const title = String(input.title || "").trim();
   if (!title) throw new Error("title is required");
+  const stamp = now();
   const doc = {
     id: uid(),
     title,
@@ -757,14 +1033,21 @@ function addSourceDocument(input) {
     authors: Array.isArray(input.authors) ? input.authors : ["HQ"],
     publicationDate: input.date || day(),
     type: input.type || "note",
-    url: null,
-    filePath: null,
-    fileName: null,
+    sourceType: ["file", "url", "api", "stream"].includes(input.sourceType)
+      ? input.sourceType
+      : "file",
+    url: input.url || null,
+    filePath: input.filePath || null,
+    fileName: input.fileName || null,
     notes: String(input.text || input.notes || "").slice(0, 20000),
     tags: Array.isArray(input.tags) ? input.tags.slice(0, 50) : [],
     citations: {},
+    createdAt: stamp,
+    updatedAt: stamp,
   };
-  project.sourceDocuments.push(doc);
+  mergeSourceArrays();
+  project.sources.push(doc);
+  project.sourceDocuments = project.sources;
   return doc;
 }
 
@@ -853,7 +1136,8 @@ function status() {
       events: project.timelines.reduce((sum, row) => sum + row.events.length, 0),
       locations: project.locations.length,
       characters: project.characters.length,
-      sourceDocuments: project.sourceDocuments.length,
+      sources: project.sources.length,
+      sourceDocuments: project.sources.length,
       narratives: project.narratives.length,
       assets: (project.assets || []).length,
       financeSources: (project.financeSources || []).length,
@@ -883,6 +1167,87 @@ server.registerTool(
 );
 
 server.registerTool(
+  "skeleton_sources",
+  {
+    title: "List the record's sources",
+    description:
+      "Read the canonical Sources list: uploaded documents plus API/stream feeds. Use this before claiming a data stream exists, and after adding one through chat.",
+    inputSchema: {
+      sourceType: z
+        .enum(["file", "url", "api", "stream"])
+        .optional()
+        .describe("Filter to one source type"),
+    },
+  },
+  async ({ sourceType }) => {
+    mergeSourceArrays();
+    const rows = sourceType
+      ? project.sources.filter((row) => row.sourceType === sourceType)
+      : project.sources;
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              count: rows.length,
+              sources: rows,
+              knownFeeds: KNOWN_SOURCES.map((row) => ({
+                title: row.title,
+                sourceType: row.sourceType,
+                endpoint: row.apiEndpoint || row.streamUrl || row.url || null,
+              })),
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  },
+);
+
+server.registerTool(
+  "skeleton_source_upsert",
+  {
+    title: "Add or update a source (API, stream, URL, file)",
+    description:
+      "Register a data source in the SkeletonKey Sources list: a weather/geo API, a phone or web stream, a URL, or a document. Use this when a feed is added through chat or a non-UI flow. Never store API secrets; put the env var name in notes. Changes state; ask first.",
+    inputSchema: {
+      id: z.string().optional().describe("Existing source id to update"),
+      title: z.string(),
+      description: z.string().optional(),
+      sourceType: z.enum(["file", "url", "api", "stream"]).optional(),
+      type: z.string().optional().describe("Free-form kind, e.g. api, weather, stream"),
+      url: z.string().optional(),
+      apiEndpoint: z.string().optional(),
+      httpMethod: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional(),
+      authType: z
+        .enum(["none", "basic", "bearer", "api_key", "oauth"])
+        .optional(),
+      requestHeaders: z.record(z.string(), z.string()).optional(),
+      responseFormat: z.enum(["json", "xml", "text", "csv"]).optional(),
+      dataPath: z.string().optional(),
+      streamUrl: z.string().optional(),
+      streamType: z.enum(["websocket", "sse", "polling", "webhook"]).optional(),
+      pollingInterval: z.number().optional(),
+      connectionStatus: z
+        .enum(["connected", "disconnected", "error", "connecting"])
+        .optional(),
+      notes: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+    },
+  },
+  async (input) => {
+    const result = upsertSource(input);
+    save();
+    return {
+      content: [{ type: "text", text: JSON.stringify(result.row, null, 2) }],
+    };
+  },
+);
+
+server.registerTool(
   "skeleton_init",
   {
     title: "Initialize the HQ SkeletonKey project",
@@ -898,6 +1263,7 @@ server.registerTool(
     if (reset || !existsSync(PROJECT_FILE)) {
       project = newProject(name || project.name || "HQ Field Record");
       if (description) project.description = description;
+      ensureKnownSources();
       save();
     } else if (name) {
       project.name = name;
@@ -1482,6 +1848,8 @@ function runProjectAction(action) {
       return upsertGenericEntity(args);
     case "event.add":
       return addEvent(args);
+    case "source.upsert":
+      return upsertSource(args).row;
     case "character.upsert":
       return upsertCharacter(args);
     case "location.upsert":

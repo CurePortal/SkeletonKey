@@ -98,16 +98,16 @@ const ResourceNode: React.FC<{ data: any }> = ({ data }) => {
 
   return (
     <div
-      className={`relative px-4 py-2 rounded-lg border-2 shadow-md w-48 font-sans ${style} hover:shadow-lg transition-shadow`}
+      className={`relative px-3 py-1.5 rounded-md border shadow-sm w-44 font-sans ${style} hover:shadow-md transition-shadow`}
     >
       <Handle type="target" position={Position.Left} className="!bg-gray-400" />
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex items-center justify-center gap-1.5">
         <span className="opacity-80">{icon}</span>
         <div className="flex-1 text-center">
-          <div className="text-xs font-bold uppercase opacity-70 mb-1 tracking-wider">
+          <div className="text-[10px] font-semibold uppercase opacity-70 mb-0.5 tracking-wide">
             {data.resourceType}
           </div>
-          <div className="text-sm font-semibold truncate" title={data.label}>
+          <div className="text-xs font-semibold truncate" title={data.label}>
             {data.label}
           </div>
         </div>
@@ -123,14 +123,14 @@ const ResourceNode: React.FC<{ data: any }> = ({ data }) => {
 
 const GenericNode: React.FC<{ data: any }> = ({ data }) => {
   return (
-    <div className="relative px-4 py-3 rounded-lg border-2 shadow-md w-48 font-sans bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 hover:shadow-lg transition-shadow">
+    <div className="relative px-3 py-2 rounded-md border shadow-sm w-44 font-sans bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 hover:shadow-md transition-shadow">
       <Handle type="target" position={Position.Left} className="!bg-gray-400" />
       <div className="text-center">
-        <div className="text-sm font-semibold" title={data.label}>
+        <div className="text-xs font-semibold" title={data.label}>
           {data.label}
         </div>
         {data.description && (
-          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
             {data.description}
           </div>
         )}
@@ -154,13 +154,13 @@ const ContextMenu: React.FC<{
   return (
     <div
       style={{ top, left }}
-      className="absolute z-50 w-48 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5"
+      className="absolute z-50 w-40 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5"
     >
       <div className="py-1">
         {onEdit && (
           <button
             onClick={() => onEdit(id)}
-            className="w-full text-left block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="w-full text-left block px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
             <FaEdit className="inline mr-2" />
             Edit Node
@@ -168,7 +168,7 @@ const ContextMenu: React.FC<{
         )}
         <button
           onClick={() => onDelete(id)}
-          className="w-full text-left block px-4 py-2 text-sm text-red-700 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+          className="w-full text-left block px-3 py-1.5 text-xs text-red-700 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
         >
           <FaTrash className="inline mr-2" />
           Delete Node
@@ -433,7 +433,7 @@ const NarrativeBuilderPageInternal: React.FC<{
 
     return (
       <div
-        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2.5 hover:shadow-md transition-shadow cursor-pointer"
+        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 hover:shadow-sm transition-shadow cursor-pointer"
         onClick={onClick}
       >
         <div className="flex justify-between items-start">
@@ -504,7 +504,7 @@ const NarrativeBuilderPageInternal: React.FC<{
           </div>
         </div>
         {contentText && (
-          <div className="mt-3 text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
+          <div className="mt-1.5 text-xs text-gray-600 dark:text-gray-300 line-clamp-2">
             <div title={contentText}>
               {contentText}
               {contentText.length > 150 ? "..." : ""}
@@ -989,14 +989,14 @@ const NarrativeBuilderPageInternal: React.FC<{
 
   const renderFlowView = () => (
     <div className="h-full flex flex-col">
-      <div className="flex justify-between items-center p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex justify-between items-center p-2.5 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="flex space-x-2">
           <Button size="sm" variant="outline" onClick={handleCreateGenericNode}>
             <FaPlus className="mr-1" />
             Add Node
           </Button>
         </div>
-        <div className="text-sm text-gray-500 dark:text-gray-400">
+        <div className="text-xs text-gray-500 dark:text-gray-400">
           Drag resources from the right panel or create custom nodes
         </div>
       </div>
@@ -1030,8 +1030,8 @@ const NarrativeBuilderPageInternal: React.FC<{
               isDraggingOver ? "opacity-100" : "opacity-0"
             }`}
           >
-            <div className="bg-blue-100 dark:bg-blue-800 border-2 border-dashed border-blue-400 rounded-lg p-8 text-center">
-              <FaPlus className="mx-auto h-8 w-8 text-blue-600 dark:text-blue-300 mb-2" />
+            <div className="bg-blue-100 dark:bg-blue-800 border-2 border-dashed border-blue-400 rounded-lg p-6 text-center">
+              <FaPlus className="mx-auto h-6 w-6 text-blue-600 dark:text-blue-300 mb-2" />
               <p className="text-blue-600 dark:text-blue-300 font-medium">
                 Drop resources here to add to flow
               </p>
@@ -1075,7 +1075,7 @@ const NarrativeBuilderPageInternal: React.FC<{
               />
             ))
         ) : (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+          <div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
             No scenes yet. Click "Add Scene" to create your first scene.
           </div>
         )}
@@ -1090,13 +1090,13 @@ const NarrativeBuilderPageInternal: React.FC<{
 
     return (
       <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm">
-        <div className="flex justify-between items-start mb-4">
+        <div className="flex justify-between items-start mb-3">
           <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
               Scene {selectedScene.order}: {selectedScene.title}
             </h2>
             {selectedScene.description && (
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-xs text-gray-600 dark:text-gray-400">
                 {selectedScene.description}
               </p>
             )}
@@ -1121,20 +1121,18 @@ const NarrativeBuilderPageInternal: React.FC<{
           </div>
         </div>
 
-        <div className="prose dark:prose-invert max-w-none">
-          <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg min-h-[120px]">
-            {selectedScene.content ? (
-              <div className="whitespace-pre-wrap text-gray-800 dark:text-gray-200">
-                {typeof displayContent === "string"
-                  ? displayContent
-                  : displayContent}
-              </div>
-            ) : (
-              <p className="text-gray-500 dark:text-gray-400 italic">
-                No content added to this scene yet.
-              </p>
-            )}
-          </div>
+        <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg min-h-[100px]">
+          {selectedScene.content ? (
+            <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800 dark:text-gray-200">
+              {typeof displayContent === "string"
+                ? displayContent
+                : displayContent}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+              No content added to this scene yet.
+            </p>
+          )}
         </div>
       </div>
     );
@@ -1142,10 +1140,10 @@ const NarrativeBuilderPageInternal: React.FC<{
 
   const renderSceneEditor = () => (
     <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm">
-      <h3 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">
+      <h3 className="text-sm font-semibold mb-2 text-gray-900 dark:text-white">
         {selectedSceneId ? "Edit Scene" : "New Scene"}
       </h3>
-      <div className="space-y-4">
+      <div className="space-y-3">
         <InputField
           label="Scene Title"
           value={sceneTitle}
@@ -1168,11 +1166,11 @@ const NarrativeBuilderPageInternal: React.FC<{
             ref={sceneContentRef}
             value={sceneContent}
             onChange={(html) => setSceneContent(html)}
-            className="w-full min-h-[120px] p-2 border rounded-md bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full min-h-[100px] p-2 text-sm border rounded-md bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
       </div>
-      <div className="flex justify-end space-x-2 mt-6">
+      <div className="flex justify-end space-x-2 mt-4">
         <Button variant="outline" onClick={handleCancelEditScene}>
           Cancel
         </Button>
@@ -1196,10 +1194,10 @@ const NarrativeBuilderPageInternal: React.FC<{
       }
     >
       <div className="h-full flex overflow-hidden bg-gray-50 dark:bg-gray-900">
-        <div className="w-60 flex-shrink-0 bg-white dark:bg-gray-800 p-2.5 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full overflow-hidden">
-          <div className="flex justify-between items-center mb-4">
+        <div className="w-56 flex-shrink-0 bg-white dark:bg-gray-800 p-2 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full overflow-hidden">
+          <div className="flex justify-between items-center mb-3 px-1">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-              {isFlowsSection ? "Flow sections" : "Stories & diary"}
+              {isFlowsSection ? "Flows & notes" : "Stories & diary"}
             </h2>
             <Button size="sm" onClick={handleCreateNarrative}>
               New
@@ -1212,14 +1210,14 @@ const NarrativeBuilderPageInternal: React.FC<{
                 <button
                   key={n.id}
                   onClick={() => setSelectedNarrativeId(n.id)}
-                  className={`w-full text-left p-2 rounded-md transition-colors flex items-start gap-2 ${
+                  className={`w-full text-left p-1.5 rounded-md transition-colors flex items-start gap-2 ${
                     isSelected
                       ? "bg-blue-600 text-white"
                       : "hover:bg-gray-100 dark:hover:bg-gray-700"
                   }`}
                 >
                   <FaBook
-                    className={`mt-1 h-4 w-4 flex-shrink-0 ${
+                    className={`mt-0.5 h-3.5 w-3.5 flex-shrink-0 ${
                       isSelected
                         ? "text-blue-200"
                         : "text-gray-400 dark:text-gray-500"
@@ -1227,7 +1225,7 @@ const NarrativeBuilderPageInternal: React.FC<{
                   />
                   <div className="flex-1 overflow-hidden">
                     <p
-                      className={`font-medium truncate ${
+                      className={`text-sm font-medium truncate ${
                         isSelected
                           ? "text-white"
                           : "text-gray-800 dark:text-gray-100"
@@ -1267,7 +1265,7 @@ const NarrativeBuilderPageInternal: React.FC<{
             <>
               <div className="p-2.5 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center flex-shrink-0">
                 <div>
-                  <h2 className="text-base font-bold text-gray-900 dark:text-white">
+                  <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
                     {selectedNarrative.title}
                   </h2>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">
@@ -1319,9 +1317,9 @@ const NarrativeBuilderPageInternal: React.FC<{
             </>
           ) : (
             <div className="flex flex-col items-center justify-center gap-2 h-full">
-              <p className="text-gray-500">
+              <p className="text-sm text-gray-500">
                 {isFlowsSection
-                  ? "Create or select a flow section to begin."
+                  ? "Create or select a flow or note to begin."
                   : "Create or select a story to begin."}
               </p>
               <Button size="sm" onClick={handleCreateNarrative}>
@@ -1332,7 +1330,7 @@ const NarrativeBuilderPageInternal: React.FC<{
         </div>
 
         {selectedNarrative?.reportType !== "note" && (
-          <div className="w-64 flex-shrink-0 h-full overflow-hidden">
+          <div className="w-60 flex-shrink-0 h-full overflow-hidden">
             <NarrativeResourcePanel onInsertResource={handleInsertResource} />
           </div>
         )}
@@ -1341,7 +1339,15 @@ const NarrativeBuilderPageInternal: React.FC<{
       <Modal
         isOpen={isNarrativeModalOpen}
         onClose={() => setIsNarrativeModalOpen(false)}
-        title={isEditingNarrative ? "Edit Section" : "New Section"}
+        title={
+          isEditingNarrative
+            ? isFlowsSection
+              ? "Edit Flow or Note"
+              : "Edit Story"
+            : isFlowsSection
+              ? "New Flow or Note"
+              : "New Story"
+        }
       >
         <div className="space-y-4">
           <InputField
@@ -1400,7 +1406,11 @@ const NarrativeBuilderPageInternal: React.FC<{
             Cancel
           </Button>
           <Button variant="primary" onClick={handleSaveNarrative}>
-            {isEditingNarrative ? "Save Changes" : "Create Section"}
+            {isEditingNarrative
+              ? "Save Changes"
+              : isFlowsSection
+                ? "Create Flow or Note"
+                : "Create Story"}
           </Button>
         </div>
       </Modal>
@@ -1408,7 +1418,7 @@ const NarrativeBuilderPageInternal: React.FC<{
       <Modal
         isOpen={isDeleteNarrativeModalOpen}
         onClose={() => setIsDeleteNarrativeModalOpen(false)}
-        title="Delete Section"
+        title={isFlowsSection ? "Delete Flow or Note" : "Delete Story"}
       >
         <p>
           Are you sure you want to delete "{selectedNarrative?.title}"? This

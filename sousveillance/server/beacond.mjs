@@ -41,6 +41,7 @@ import {
 import { createSession, getSession, listMessages, promptAsync, waitForReply } from "./lib/opencode.mjs";
 import { note as fieldNote } from "./fieldlog.mjs";
 import { proposeExtension } from "./lib/extensions.mjs";
+import { startVisitWatcher } from "./lib/visits.mjs";
 
 if (!TOKEN) {
   console.error("beacon: BEACON_TOKEN is required (put it in sousveillance/server/.env)");
@@ -455,7 +456,20 @@ function appendNarrativeScenes(project, timeline, rows, label = "Field log") {
   return added;
 }
 
-function applyAmbient(project, batch, data, label = "Ambient", tag = "ambient") {
+function applyAmbient(
+  project,
+  batch,
+  data,
+  label = "Ambient",
+  tag = "ambient",
+  fallback = null,
+) {
+  const fallbackLat = Number(fallback?.lat);
+  const fallbackLon = Number(fallback?.lon);
+  const hasFallback =
+    Number.isFinite(fallbackLat) &&
+    Number.isFinite(fallbackLon) &&
+    !(fallbackLat === 0 && fallbackLon === 0);
   const timeline = ensureBeaconTimeline(project);
   // Local calendar day. toISOString() converts to UTC first, which files every
   // evening event (after 17:00 Pacific) under tomorrow's date.
@@ -654,6 +668,15 @@ function applyAmbient(project, batch, data, label = "Ambient", tag = "ambient") 
     if (!name) continue;
     const lat = Number(item.lat);
     const lon = Number(item.lon);
+    const hasExplicit = Number.isFinite(lat) && Number.isFinite(lon);
+    // A place mentioned while the beacon was recording is anchored to the
+    // observation position. That is real telemetry, not an invented coordinate;
+    // without it the record lands at Null Island on the map.
+    const coordinates = hasExplicit
+      ? { lat, lng: lon }
+      : hasFallback
+        ? { lat: fallbackLat, lng: fallbackLon }
+        : null;
     let location = project.locations.find(
       (row) => String(row?.name || "").trim().toLowerCase() === name.toLowerCase(),
     );
@@ -662,8 +685,7 @@ function applyAmbient(project, batch, data, label = "Ambient", tag = "ambient") 
         id: randomUUID(),
         name,
         description: String(item.description || "").slice(0, 4000),
-        coordinates:
-          Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lng: lon } : null,
+        coordinates,
         timelineIds: [timeline.id],
         parentLocationId: null,
         linkedEventIds: [],
@@ -680,8 +702,16 @@ function applyAmbient(project, batch, data, label = "Ambient", tag = "ambient") 
       project.locations.push(location);
     } else {
       if (item.description) location.description = String(item.description).slice(0, 4000);
-      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      const current = location.coordinates;
+      const currentIsUnset =
+        !current ||
+        !Number.isFinite(Number(current.lat)) ||
+        !Number.isFinite(Number(current.lng)) ||
+        (Number(current.lat) === 0 && Number(current.lng) === 0);
+      if (hasExplicit) {
         location.coordinates = { lat, lng: lon };
+      } else if (coordinates && currentIsUnset) {
+        location.coordinates = coordinates;
       }
       if (!location.timelineIds.includes(timeline.id)) location.timelineIds.push(timeline.id);
     }
@@ -780,12 +810,18 @@ function applyAmbient(project, batch, data, label = "Ambient", tag = "ambient") 
   project.updatedAt = new Date().toISOString();
 }
 
-async function writeAmbientToSkeletonKey(batch, data, label = "Ambient", tag = "ambient") {
+async function writeAmbientToSkeletonKey(
+  batch,
+  data,
+  label = "Ambient",
+  tag = "ambient",
+  fallback = null,
+) {
   const project = await fetch(`${SK_PROJECT_URL}/project`, {
     signal: AbortSignal.timeout(10000),
   }).then((r) => (r.ok ? r.json() : null));
   if (!project) return;
-  applyAmbient(project, batch, data, label, tag);
+  applyAmbient(project, batch, data, label, tag, fallback);
   const res = await fetch(`${SK_PROJECT_URL}/project`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -812,7 +848,8 @@ async function processAmbient(batch) {
       cultures: [],
       locations: [],
     };
-    await writeAmbientToSkeletonKey(batch, data);
+    const fallback = latestPosition() || null;
+    await writeAmbientToSkeletonKey(batch, data, "Ambient", "ambient", fallback);
     if (data.extension && typeof data.extension === "object") {
       const result = proposeExtension({ ...data.extension, source: batch });
       if (result.ok) {
@@ -897,7 +934,17 @@ async function processFieldLogEntry(row) {
       locations: [],
     };
     data.events = [];
-    await writeAmbientToSkeletonKey(row.detail, data, "Field log", "fieldlog");
+    const fallback =
+      Number.isFinite(Number(row.lat)) && Number.isFinite(Number(row.lon))
+        ? { lat: Number(row.lat), lon: Number(row.lon) }
+        : null;
+    await writeAmbientToSkeletonKey(
+      row.detail,
+      data,
+      "Field log",
+      "fieldlog",
+      fallback,
+    );
     saveEntryCursor(row.id);
   } catch (e) {
     console.log("fieldlog-extract: failed:", String(e.message || e).slice(0, 120));
@@ -914,7 +961,7 @@ function scanFieldLogEntries() {
     const db = new DatabaseSync(BEACON_DB);
     const rows = db
       .prepare(
-        `SELECT id, ts, kind, detail FROM fl_events
+        `SELECT id, ts, kind, lat, lon, detail FROM fl_events
          WHERE id > ? AND ts >= ? AND kind IN ('event','decision','place','hazard')
          ORDER BY id LIMIT 20`,
       )
@@ -1105,3 +1152,8 @@ wss.on("connection", (ws) => {
 server.listen(PORT, HOST, () => {
   console.log(`beacond: listening on http://${HOST}:${PORT}  (ws /stream)`);
 });
+
+// Coordinates -> places, timeline events, field reports and narrative scenes.
+// The microphone path (ambient) fills the same record from text; this is the
+// geospatial half and runs whether or not the operative asks HQ anything.
+startVisitWatcher();

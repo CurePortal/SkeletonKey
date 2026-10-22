@@ -1,16 +1,22 @@
-import React, { useState } from "react";
+import React from "react";
 import { useProjectData } from "../../contexts/ProjectDataContext";
 import { useAppState } from "../../contexts/AppStateContext";
-import useDebouncedSave from "../../hooks/useDebouncedSave";
 
 interface StatusBarProps {
   appVersion?: string;
 }
 
 const StatusBar: React.FC<StatusBarProps> = ({ appVersion = "1.0.0" }) => {
-  const { project, hasUnsavedChanges } = useProjectData();
+  const {
+    project,
+    hasUnsavedChanges,
+    isSaving,
+    isAutoSavePending,
+    lastSavedAt,
+    autoSaveError,
+  } = useProjectData();
   const { appState } = useAppState();
-  const { isPendingSave } = useDebouncedSave();
+  const isPendingSave = isSaving;
 
   // Format a date string
   const formatDate = (dateString?: string) => {
@@ -32,7 +38,26 @@ const StatusBar: React.FC<StatusBarProps> = ({ appVersion = "1.0.0" }) => {
           {project ? (
             <>
               <span className="text-gray-600 dark:text-gray-400">
-                {isPendingSave ? (
+                {autoSaveError ? (
+                  <span
+                    className="flex items-center text-red-600 dark:text-red-400"
+                    title={autoSaveError}
+                  >
+                    <svg
+                      className="mr-1 h-3 w-3"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    Save failed
+                  </span>
+                ) : isPendingSave ? (
                   <span className="flex items-center">
                     <svg
                       className="animate-spin -ml-1 mr-2 h-3 w-3 text-blue-500"
@@ -56,7 +81,7 @@ const StatusBar: React.FC<StatusBarProps> = ({ appVersion = "1.0.0" }) => {
                     </svg>
                     Saving...
                   </span>
-                ) : hasUnsavedChanges ? (
+                ) : isAutoSavePending || hasUnsavedChanges ? (
                   <span className="flex items-center text-amber-600 dark:text-amber-400">
                     <svg
                       className="mr-1 h-3 w-3"
@@ -92,9 +117,10 @@ const StatusBar: React.FC<StatusBarProps> = ({ appVersion = "1.0.0" }) => {
               </span>
 
               <span className="text-gray-500 dark:text-gray-500 hidden sm:inline">
-                Last modified: {formatDate(project.updatedAt)}
+                {lastSavedAt
+                  ? `Last saved: ${formatDate(lastSavedAt)}`
+                  : `Last modified: ${formatDate(project.updatedAt)}`}
               </span>
-
             </>
           ) : (
             <span className="text-gray-500 dark:text-gray-400">

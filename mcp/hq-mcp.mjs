@@ -519,6 +519,7 @@ server.registerTool(
       "entity.add {name, kind?, description?, tags?}; timeline.add {name, description?, isMain?}; " +
       "event.add {title, date?, kind?, description?, timelineId?}; " +
       "narrative.add {title, text, tier?, periodStart?, periodEnd?}; " +
+      "source.upsert {title, description?, sourceType?, apiEndpoint?, streamUrl?, url?, notes?, tags?}; " +
       "link.add {fromKind, fromId, toKind, toId, relation?, note?}.",
     inputSchema: {
       action: z
@@ -534,6 +535,7 @@ server.registerTool(
           "timeline.add",
           "event.add",
           "narrative.add",
+          "source.upsert",
           "link.add",
         ])
         .describe("Command name"),

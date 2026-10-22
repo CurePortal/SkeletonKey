@@ -95,6 +95,42 @@ const currentMonthKey = (): string => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
+// The timeline canvas is a workspace, not a fresh page: keep the operator's
+// zoom and pan when they switch to another area of the app and come back.
+const TIMELINE_VIEW_PREFIX = "sk-timeline-view:";
+const clampTimelineZoom = (value: unknown): number => {
+  const zoom = Number(value);
+  if (!Number.isFinite(zoom)) return 1;
+  return Math.max(0.1, Math.min(2, zoom));
+};
+
+interface SavedTimelineView {
+  zoom: number;
+  pan: { x: number; y: number };
+}
+
+const timelineViewKey = (projectId?: string): string =>
+  `${TIMELINE_VIEW_PREFIX}${projectId || "main"}`;
+
+const readTimelineView = (projectId?: string): SavedTimelineView | null => {
+  try {
+    const raw = localStorage.getItem(timelineViewKey(projectId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const x = Number(parsed?.pan?.x);
+    const y = Number(parsed?.pan?.y);
+    return {
+      zoom: clampTimelineZoom(parsed?.zoom),
+      pan: {
+        x: Number.isFinite(x) ? x : 0,
+        y: Number.isFinite(y) ? y : 0,
+      },
+    };
+  } catch {
+    return null;
+  }
+};
+
 const TimelineFlowView: React.FC<TimelineFlowViewProps> = ({
   timelines,
   currentTimelineId,
@@ -111,8 +147,15 @@ const TimelineFlowView: React.FC<TimelineFlowViewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const { project } = useProjectData();
 
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const savedViewRef = useRef<SavedTimelineView | null>(
+    readTimelineView(project?.id),
+  );
+  const [zoom, setZoom] = useState(() =>
+    clampTimelineZoom(savedViewRef.current?.zoom ?? 1),
+  );
+  const [pan, setPan] = useState(() =>
+    savedViewRef.current?.pan ?? { x: 0, y: 0 },
+  );
   const zoomRef = useRef(zoom);
   const panRef = useRef(pan);
   zoomRef.current = zoom;
@@ -138,7 +181,9 @@ const TimelineFlowView: React.FC<TimelineFlowViewProps> = ({
   const [showDetailPanel, setShowDetailPanel] = useState(true);
   const [hoveredSection, setHoveredSection] = useState<string | null>(null);
   const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(
+    () => !savedViewRef.current,
+  );
   const [hoveredTimeline, setHoveredTimeline] = useState<ID | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<InternalEventType | null>(
     null,
@@ -361,6 +406,18 @@ const TimelineFlowView: React.FC<TimelineFlowViewProps> = ({
       return () => clearTimeout(timeoutId);
     }
   }, [isInitialLoad, timelines.length, panToShowAllTimelines]);
+
+  useEffect(() => {
+    if (isInitialLoad) return;
+    try {
+      localStorage.setItem(
+        timelineViewKey(project?.id),
+        JSON.stringify({ zoom, pan }),
+      );
+    } catch {
+      // Storage is best-effort; losing the saved view is not fatal.
+    }
+  }, [zoom, pan, isInitialLoad, project?.id]);
 
   const renderTimelines = useCallback(
     (

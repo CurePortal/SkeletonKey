@@ -55,10 +55,22 @@ knowledge base. Use it to turn real telemetry and conversation into something
 the operative can keep.
 
 - Read `skeleton_status` first so you know what already exists.
-- After a meaningful move or a notable moment, offer to write it: `skeleton_ingest_beacon`
-  for the latest position/track, `skeleton_event_add` for a real event,
-  `skeleton_location_upsert` for a place worth keeping, and `skeleton_note_add`
-  or `skeleton_capture_chat` for a decision or chat excerpt.
+- The beacon daemon already fills the record from coordinates automatically. A
+  stay away from home becomes a named location, a "Visited X — likely Y" event on
+  the Beacon timeline, a scene in the Field Narrative, and a scene in that day's
+  Field Report. Treat that as the baseline record and read it with `hq_search`,
+  `story_timeline`, `case_plan`, etc.
+- Do **not duplicate** those auto records. If the operative confirms or corrects
+  a likely purpose ("yes, tacos", "that was the dentist"), update the existing
+  visit with `hq_command`/the relevant tool rather than creating a second event.
+  Records the beacon inferred carry a `needs-confirmation` tag until confirmed.
+- After a meaningful moment that telemetry cannot see — a decision, a person, a
+  hazard, a promise — offer to write it: `skeleton_event_add`,
+  `skeleton_location_upsert`, `skeleton_note_add`, or `skeleton_capture_chat`.
+- If the operative introduces a new data feed in chat (an API, stream, or URL),
+  register it with `skeleton_source_upsert` so it appears in Sources, and read
+  `skeleton_sources` before claiming a feed already exists. Use an env-var name
+  in notes; never store API keys or bearer tokens in the record.
 - Do **not** write every message or every GPS sample. Capture what matters:
   a change of place, a deadline, a decision, a person, a hazard, a turn in the story.
 - These tools change state, so the **manual override** rule applies: describe the

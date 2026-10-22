@@ -39,7 +39,7 @@ const ResourceItem: React.FC<ResourceItemProps> = ({
 
   return (
     <div
-      className="flex items-center justify-between p-2 text-sm text-slate-800 dark:text-slate-200 rounded-md hover:bg-blue-100 dark:hover:bg-blue-800/50 group"
+      className="flex items-center justify-between p-1.5 text-xs text-slate-800 dark:text-slate-200 rounded-md hover:bg-blue-100 dark:hover:bg-blue-800/50 group"
       title={`Insert '${itemName}'`}
     >
       <span
@@ -124,7 +124,7 @@ const ResourceAccordion: React.FC<ResourceAccordionProps> = ({
     <div>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full justify-between items-center rounded-t-md bg-slate-100 dark:bg-slate-700/50 px-3 py-2 text-left text-sm font-medium text-slate-900 dark:text-white hover:bg-slate-200 dark:hover:bg-slate-700"
+        className="flex w-full justify-between items-center rounded-t-md bg-slate-100 dark:bg-slate-700/50 px-2 py-1.5 text-left text-xs font-medium text-slate-900 dark:text-white hover:bg-slate-200 dark:hover:bg-slate-700"
       >
         <span className="flex items-center gap-2">
           {icon}
@@ -226,7 +226,7 @@ const NarrativeResourcePanel: React.FC<NarrativeResourcePanelProps> = ({
   );
 
   return (
-    <div className="w-full h-full p-2.5 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col">
+    <div className="w-full h-full p-2 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col">
       <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2 flex-shrink-0">
         Project Resources
       </h3>

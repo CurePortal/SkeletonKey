@@ -33,6 +33,7 @@ import {
   ID,
   Coordinates,
 } from "../types";
+import { useAppState } from "./AppStateContext";
 import { ensureProjectHasNarratives } from "../services/projectMigration";
 import { withDeletionTombstones } from "../services/mainProjectService";
 import { v4 as uuidv4 } from "uuid";
@@ -254,6 +255,10 @@ interface ProjectDataContextType {
   enableAutoSave: () => void;
   disableAutoSave: () => void;
   isAutoSaveEnabled: boolean;
+  isAutoSavePending: boolean;
+  isSaving: boolean;
+  lastSavedAt: string | null;
+  autoSaveError: string | null;
 }
 // --- END UNDO/REDO ---
 
@@ -279,7 +284,13 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null);
   const [isFileBasedProject, setIsFileBasedProject] = useState<boolean>(false);
   const [isAutoSaveEnabled, setIsAutoSaveEnabled] = useState<boolean>(true);
+  const [isAutoSavePending, setIsAutoSavePending] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [autoSaveError, setAutoSaveError] = useState<string | null>(null);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const { appState } = useAppState();
+  const autoSaveDelay = appState.autoSaveDelay;
 
   const isTauriEnvironment =
     typeof window !== "undefined" &&
@@ -391,6 +402,12 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
       setOriginalProject(
         processedProject ? JSON.parse(JSON.stringify(processedProject)) : null,
       );
+      setIsAutoSavePending(false);
+      setIsSaving(false);
+      setAutoSaveError(null);
+      setLastSavedAt(
+        processedProject ? new Date().toISOString() : null,
+      );
 
       if (filePath) {
         setCurrentFilePath(filePath);
@@ -409,8 +426,13 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
 
   const autoSaveProject = useCallback(
     async (projectToSave: ProjectType | null): Promise<void> => {
-      if (!isAutoSaveEnabled || !projectToSave) return;
+      if (!isAutoSaveEnabled || !projectToSave) {
+        setIsAutoSavePending(false);
+        return;
+      }
       console.log(`Attempting auto-save for: ${projectToSave.name}`);
+      setIsSaving(true);
+      setAutoSaveError(null);
       try {
         let savedViaFileSystem = false;
 
@@ -459,6 +481,7 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
 
         // --- UNDO/REDO: Update originalProject on successful save ---
         setOriginalProject(JSON.parse(JSON.stringify(projectToSave)));
+        setLastSavedAt(new Date().toISOString());
         // --- END UNDO/REDO ---
 
         const recentProjectsStr =
@@ -505,11 +528,17 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
         console.log("Project auto-saved and recent list updated.");
       } catch (error) {
         console.error("Auto-save failed:", error);
+        setAutoSaveError(
+          error instanceof Error ? error.message : String(error),
+        );
+      } finally {
+        setIsSaving(false);
+        setIsAutoSavePending(false);
       }
     },
     [
       isAutoSaveEnabled,
-        isFileBasedProject,
+      isFileBasedProject,
       currentFilePath,
       isTauriEnvironment,
     ],
@@ -518,16 +547,20 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
   // Helper function to schedule autosave
   const scheduleAutoSave = useCallback(
     (projectToSave: ProjectType) => {
-      if (isAutoSaveEnabled) {
-        if (autoSaveTimeoutRef.current) {
-          clearTimeout(autoSaveTimeoutRef.current);
-        }
-        autoSaveTimeoutRef.current = setTimeout(() => {
-          autoSaveProject(projectToSave);
-        }, 2000);
+      if (!isAutoSaveEnabled) {
+        setIsAutoSavePending(false);
+        return;
       }
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+      setIsAutoSavePending(true);
+      autoSaveTimeoutRef.current = setTimeout(() => {
+        autoSaveTimeoutRef.current = null;
+        void autoSaveProject(projectToSave);
+      }, autoSaveDelay);
     },
-    [isAutoSaveEnabled, autoSaveProject],
+    [isAutoSaveEnabled, autoSaveProject, autoSaveDelay],
   );
 
   // IMPROVED updateProjectDataAndAutoSave with deep cloning
@@ -2003,7 +2036,12 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
 
   // Save operations
   const markSaved = useCallback(() => {
-    if (project) setOriginalProject(JSON.parse(JSON.stringify(project)));
+    if (project) {
+      setOriginalProject(JSON.parse(JSON.stringify(project)));
+      setLastSavedAt(new Date().toISOString());
+      setAutoSaveError(null);
+      setIsAutoSavePending(false);
+    }
   }, [project]);
 
   const saveChanges = useCallback(async (): Promise<boolean> => {
@@ -2032,6 +2070,9 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
       }
       if (saved) {
         setOriginalProject(JSON.parse(JSON.stringify(project)));
+        setLastSavedAt(new Date().toISOString());
+        setAutoSaveError(null);
+        setIsAutoSavePending(false);
         const recentProjectsStr =
           localStorage.getItem("recentProjects") || "[]";
         let recentProjects: any[] = JSON.parse(recentProjectsStr);
@@ -2092,6 +2133,9 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
           setCurrentFilePath(newPath);
           setIsFileBasedProject(true);
           setOriginalProject(JSON.parse(JSON.stringify(project)));
+          setLastSavedAt(new Date().toISOString());
+          setAutoSaveError(null);
+          setIsAutoSavePending(false);
           setHistory({ past: [], present: project, future: [] });
           return true;
         }
@@ -2121,6 +2165,7 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
   const enableAutoSave = useCallback(() => setIsAutoSaveEnabled(true), []);
   const disableAutoSave = useCallback(() => {
     setIsAutoSaveEnabled(false);
+    setIsAutoSavePending(false);
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current);
       autoSaveTimeoutRef.current = null;
@@ -2323,6 +2368,10 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({
         enableAutoSave,
         disableAutoSave,
         isAutoSaveEnabled,
+        isAutoSavePending,
+        isSaving,
+        lastSavedAt,
+        autoSaveError,
       }}
     >
       {children}
