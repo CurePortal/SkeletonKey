@@ -615,7 +615,7 @@ export function mergeProjects(local: ProjectType, incoming: ProjectType): Projec
     mergeByKey(
       a.characters,
       b.characters,
-      (row: any) => String(row.name || row.id || "").toLowerCase(),
+      (row: any) => String(row.id || row.name || "").toLowerCase(),
       combineEntity,
     ),
     tombstones,
@@ -624,7 +624,7 @@ export function mergeProjects(local: ProjectType, incoming: ProjectType): Projec
     mergeByKey(
       a.locations,
       b.locations,
-      (row: any) => String(row.name || row.id || "").toLowerCase(),
+      (row: any) => String(row.id || row.name || "").toLowerCase(),
       combineEntity,
     ),
     tombstones,
@@ -633,7 +633,7 @@ export function mergeProjects(local: ProjectType, incoming: ProjectType): Projec
     mergeByKey(
       a.technologies,
       b.technologies,
-      (row: any) => String(row.name || row.id || "").toLowerCase(),
+      (row: any) => String(row.id || row.name || "").toLowerCase(),
       combineEntity,
     ),
     tombstones,
@@ -642,7 +642,7 @@ export function mergeProjects(local: ProjectType, incoming: ProjectType): Projec
     mergeByKey(
       a.cultures,
       b.cultures,
-      (row: any) => String(row.name || row.id || "").toLowerCase(),
+      (row: any) => String(row.id || row.name || "").toLowerCase(),
       combineEntity,
     ),
     tombstones,
