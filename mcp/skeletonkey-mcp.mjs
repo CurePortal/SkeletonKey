@@ -21,6 +21,10 @@ import { randomUUID } from "node:crypto";
 
 const STATE_DIR = process.env.SK_STATE_DIR || join(homedir(), ".local", "state", "skeletonkey");
 const PROJECT_FILE = process.env.SK_PROJECT_FILE || join(STATE_DIR, "project.json");
+const CRYPTO_WATCH_CONFIG =
+  process.env.CRYPTO_WATCH_CONFIG ||
+  join(homedir(), ".config", "crypto-watch", "config.json");
+const XMR_RPC = process.env.XMR_RPC || "http://127.0.0.1:18083/json_rpc";
 const PORT = Number(process.env.SK_MCP_PORT || 8799);
 const HOST = process.env.SK_MCP_HOST || "127.0.0.1";
 const HQ_BRIDGE = (process.env.SK_BRIDGE_URL || "http://127.0.0.1:8788").replace(/\/$/, "");
@@ -788,6 +792,175 @@ function upsertProfile(input) {
   return row;
 }
 
+function watcherChain(value) {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("xmr") || text.includes("monero")) return "xmr";
+  if (text.includes("btc") || text.includes("bitcoin")) return "btc";
+  if (text.includes("ltc") || text.includes("litecoin")) return "ltc";
+  if (text.includes("eth") || text.includes("ethereum")) return "eth";
+  return null;
+}
+
+const WATCHER_LABELS = {
+  btc: { name: "Bitcoin", account: "Assets:Crypto:Bitcoin" },
+  ltc: { name: "Litecoin", account: "Assets:Crypto:Litecoin" },
+  eth: { name: "Ethereum", account: "Assets:Crypto:Ethereum" },
+  xmr: { name: "Monero", account: "Assets:Crypto:Monero" },
+};
+
+function readCryptoWatcherConfig() {
+  try {
+    if (!existsSync(CRYPTO_WATCH_CONFIG)) return {};
+    return JSON.parse(readFileSync(CRYPTO_WATCH_CONFIG, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function writeCryptoWatcherAddress(chain, address) {
+  if (!["btc", "ltc", "eth"].includes(chain)) {
+    throw new Error("Monero is watched by xmr-watch, not the address config.");
+  }
+  const value = String(address || "").trim();
+  if (!value) throw new Error("wallet address is required");
+  const current = readCryptoWatcherConfig();
+  const next = { ...current, [chain]: value };
+  mkdirSync(dirname(CRYPTO_WATCH_CONFIG), { recursive: true });
+  writeFileSync(CRYPTO_WATCH_CONFIG, `${JSON.stringify(next, null, 1)}\n`);
+  return next;
+}
+
+async function readXmrAddress() {
+  try {
+    const response = await fetch(XMR_RPC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0",
+        method: "get_address",
+        params: { account_index: 0 },
+      }),
+      signal: AbortSignal.timeout(2500),
+    });
+    if (!response.ok) {
+      return { address: "", error: `Wallet RPC returned ${response.status}.` };
+    }
+    const json = await response.json();
+    const address = String(json?.result?.address || "").trim();
+    return {
+      address,
+      error: address ? "" : "Wallet RPC did not return an address.",
+    };
+  } catch (error) {
+    return { address: "", error: String(error?.message || error) };
+  }
+}
+
+function watcherSnapshot() {
+  return (async () => {
+    const config = readCryptoWatcherConfig();
+    const addresses = {};
+    for (const [key, value] of Object.entries(config)) {
+      const chain = watcherChain(key);
+      if (chain && chain !== "xmr" && value) addresses[chain] = String(value).trim();
+    }
+    const xmr = await readXmrAddress();
+    if (xmr.address) addresses.xmr = xmr.address;
+    return {
+      config,
+      addresses,
+      configReadable: existsSync(CRYPTO_WATCH_CONFIG),
+      xmrError: xmr.error,
+    };
+  })();
+}
+
+function syncCryptoWatcherAddress(source) {
+  if (source.kind !== "crypto" || !source.reference) return;
+  const chain = watcherChain(source.chain || source.name);
+  if (chain && ["btc", "ltc", "eth"].includes(chain)) {
+    try {
+      writeCryptoWatcherAddress(chain, source.reference);
+    } catch {
+      // A bad watcher config should not block saving the source.
+    }
+  }
+}
+
+function planWatcherReconcile(sources, addresses, prunable = []) {
+  const create = [];
+  const update = [];
+  const remove = [];
+  const crypto = sources.filter((source) => source.kind === "crypto");
+  const claimed = new Set();
+  const same = (a, b) =>
+    String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+
+  for (const [chain, address] of Object.entries(addresses)) {
+    const value = String(address || "").trim();
+    if (!value) continue;
+    const label = WATCHER_LABELS[chain];
+    const candidates = crypto.filter(
+      (source) =>
+        !claimed.has(source.id) &&
+        watcherChain(source.chain || source.name) === chain,
+    );
+    const exact =
+      candidates.find((source) => same(source.reference, value)) || candidates[0];
+    if (!exact) {
+      create.push({
+        name: `${label.name} wallet`,
+        kind: "crypto",
+        status: "active",
+        ledgerAccount: label.account,
+        envVar: "",
+        reference: value,
+        chain: chain.toUpperCase(),
+        notes: "Managed by the local crypto watcher.",
+        tags: ["watcher"],
+        lastSync: "",
+      });
+      continue;
+    }
+    claimed.add(exact.id);
+    const patch = {};
+    if (String(exact.chain || "").toUpperCase() !== chain.toUpperCase()) {
+      patch.chain = chain.toUpperCase();
+    }
+    if (!same(exact.reference, value)) patch.reference = value;
+    const tags = Array.isArray(exact.tags) ? exact.tags : [];
+    if (!tags.some((tag) => String(tag).toLowerCase() === "watcher")) {
+      patch.tags = [...tags, "watcher"];
+    }
+    if (Object.keys(patch).length) update.push({ id: exact.id, patch });
+  }
+
+  const watched = new Set(
+    Object.entries(addresses)
+      .filter(([, value]) => String(value || "").trim())
+      .map(([chain]) => chain),
+  );
+  for (const source of crypto) {
+    const chain = watcherChain(source.chain || source.name);
+    if (!chain) continue;
+    const tags = Array.isArray(source.tags) ? source.tags : [];
+    const isWatcher = tags.some((tag) => String(tag).toLowerCase() === "watcher");
+    if (!watched.has(chain)) {
+      if (isWatcher && prunable.includes(chain)) remove.push(source.id);
+      continue;
+    }
+    if (claimed.has(source.id)) continue;
+    if (isWatcher && prunable.includes(chain)) {
+      remove.push(source.id);
+      continue;
+    }
+    if (!String(source.reference || "").trim()) remove.push(source.id);
+  }
+
+  return { create, update, remove };
+}
+
 function upsertFinanceSource(input) {
   const name = String(input.name || "").trim();
   if (!name) throw new Error("finance source name is required");
@@ -1552,8 +1725,73 @@ server.registerTool(
   },
   async (input) => {
     const source = upsertFinanceSource(input);
+    syncCryptoWatcherAddress(source);
     save();
     return { content: [{ type: "text", text: JSON.stringify(source, null, 2) }] };
+  },
+);
+
+server.registerTool(
+  "skeleton_finance_sync_watchers",
+  {
+    title: "Sync finance sources with the local crypto watchers",
+    description:
+      "Reconcile the record's crypto finance sources with what the local watchers actually watch: BTC/LTC/ETH from the address config, XMR from the view-only wallet. Adds missing sources, corrects addresses, and removes stale watcher-managed sources. Changes state; ask first.",
+    inputSchema: {},
+  },
+  async () => {
+    const { addresses, configReadable, xmrError } = await watcherSnapshot();
+
+    const list = Array.isArray(project.financeSources)
+      ? project.financeSources
+      : (project.financeSources = []);
+    const plan = planWatcherReconcile(
+      list,
+      addresses,
+      configReadable ? ["btc", "ltc", "eth"] : [],
+    );
+    const stamp = now();
+
+    for (const source of plan.create) {
+      list.push({
+        ...source,
+        id: uid(),
+        createdAt: stamp,
+        updatedAt: stamp,
+      });
+    }
+    for (const { id, patch } of plan.update) {
+      const index = list.findIndex((row) => row.id === id);
+      if (index >= 0) {
+        list[index] = { ...list[index], ...patch, updatedAt: stamp };
+      }
+    }
+    if (plan.remove.length) {
+      project.financeSources = list.filter((row) => !plan.remove.includes(row.id));
+    }
+
+    if (plan.create.length || plan.update.length || plan.remove.length) save();
+    const watched = Object.fromEntries(
+      Object.entries(addresses).map(([chain, address]) => [chain, address]),
+    );
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              watched,
+              added: plan.create.length,
+              updated: plan.update.length,
+              removed: plan.remove.length,
+              xmrRpc: xmrError ? "unreachable" : "reachable",
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
   },
 );
 
@@ -1926,6 +2164,26 @@ const http = createServer(async (req, res) => {
       project = ensureProjectShape(incoming);
       save();
       return jsonResponse(res, 200, status());
+    }
+    if (req.method === "GET" && url.pathname === "/crypto/watchers") {
+      return jsonResponse(res, 200, await watcherSnapshot());
+    }
+    if (req.method === "POST" && url.pathname === "/crypto/watchers") {
+      const body = JSON.parse(await readBody(req));
+      const chain = watcherChain(body?.chain);
+      if (!chain) {
+        return jsonResponse(res, 400, { error: "Unknown chain." });
+      }
+      const address = String(body?.address || "").trim();
+      if (!address) {
+        return jsonResponse(res, 400, { error: "Wallet address is required." });
+      }
+      try {
+        writeCryptoWatcherAddress(chain, address);
+      } catch (error) {
+        return jsonResponse(res, 400, { error: String(error?.message || error) });
+      }
+      return jsonResponse(res, 200, await watcherSnapshot());
     }
     if (req.method === "GET" && url.pathname === "/beancount/status") {
       const fava = await favaRoot();

@@ -13,10 +13,12 @@ import {
   type BeancountStatus,
 } from "../services/hqBridgeService";
 import {
-  readCryptoWatcherConfig,
+  isAddressWatcherChain,
+  planWatcherReconcile,
+  readWatcherState,
   watcherChain,
   writeCryptoWatcherAddress,
-  type WatcherConfig,
+  type WatcherState,
 } from "../services/cryptoWatcherService";
 import {
   FiExternalLink,
@@ -117,7 +119,12 @@ const FinancePage: React.FC = () => {
   const [statusError, setStatusError] = useState("");
   const [balanceSheet, setBalanceSheet] = useState<any>(null);
   const [incomeStatement, setIncomeStatement] = useState<any>(null);
-  const [watcherConfig, setWatcherConfig] = useState<WatcherConfig>({});
+  const [watcherState, setWatcherState] = useState<WatcherState>({
+    config: {},
+    addresses: {},
+    configReadable: false,
+    xmrError: "",
+  });
   const [draft, setDraft] = useState(emptyDraft);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -149,38 +156,44 @@ const FinancePage: React.FC = () => {
     }
   };
 
+  const loadWatchers = async () => {
+    setWatcherState(await readWatcherState());
+  };
+
   useEffect(() => {
     void loadFinance();
-    void readCryptoWatcherConfig().then(setWatcherConfig);
+    void loadWatchers();
   }, []);
 
   useEffect(() => {
-    const config = watcherConfig || {};
-    const existing = project?.financeSources || [];
-    for (const [chainKey, address] of Object.entries(config)) {
-      const chain = watcherChain(chainKey);
-      if (!chain || !address) continue;
-      const alreadyTracked = existing.some(
-        (source) =>
-          watcherChain(source.chain || source.name) === chain &&
-          source.reference.trim().toLowerCase() ===
-            String(address).trim().toLowerCase(),
-      );
-      if (alreadyTracked) continue;
-      addFinanceSource({
-        name: `${chain.toUpperCase()} wallet`,
-        kind: "crypto",
-        status: "active",
-        ledgerAccount: `Assets:Crypto:${chain.toUpperCase()}`,
-        envVar: "",
-        reference: String(address).trim(),
-        chain: chain.toUpperCase(),
-        notes: "Imported automatically from the crypto watcher config.",
-        tags: ["watcher"],
-        lastSync: "",
-      });
+    const onFocus = () => void loadWatchers();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  useEffect(() => {
+    const plan = planWatcherReconcile(
+      sources,
+      watcherState.addresses,
+      watcherState.configReadable ? ["btc", "ltc", "eth"] : [],
+    );
+    if (!plan.create.length && !plan.update.length && !plan.remove.length) {
+      return;
     }
-  }, [watcherConfig, project?.financeSources, addFinanceSource]);
+    for (const source of plan.create) addFinanceSource(source);
+    for (const { id, patch } of plan.update) {
+      const existing = sources.find((source) => source.id === id);
+      if (existing) updateFinanceSource({ ...existing, ...patch });
+    }
+    for (const id of plan.remove) deleteFinanceSource(id);
+  }, [
+    sources,
+    watcherState.addresses,
+    watcherState.configReadable,
+    addFinanceSource,
+    updateFinanceSource,
+    deleteFinanceSource,
+  ]);
 
   const totals = useMemo(() => {
     const trees = balanceSheet?.data?.trees || [];
@@ -208,13 +221,13 @@ const FinancePage: React.FC = () => {
       sources.filter((source) => {
         if (source.kind !== "crypto") return false;
         const chain = watcherChain(source.chain || source.name);
+        if (!chain) return false;
         return (
-          chain &&
-          String(watcherConfig[chain] || "").toLowerCase() ===
-            source.reference.trim().toLowerCase()
+          String(watcherState.addresses[chain] || "").toLowerCase() ===
+          source.reference.trim().toLowerCase()
         );
       }).length,
-    [sources, watcherConfig],
+    [sources, watcherState.addresses],
   );
 
   const resetDraft = () => {
@@ -229,13 +242,13 @@ const FinancePage: React.FC = () => {
   ) => {
     const key = watcherChain(chain || name);
     if (!key) {
-      if (String(chain || name).toUpperCase().includes("XMR")) {
-        showInfo(
-          "Monero uses the view-only wallet, not the address watcher. Run xmr-watch-setup to configure it.",
-        );
-      } else {
-        showInfo("Choose BTC, LTC, or ETH to link this source to the watcher.");
-      }
+      showInfo("Choose BTC, LTC, ETH, or XMR to link this source to a watcher.");
+      return;
+    }
+    if (!isAddressWatcherChain(key)) {
+      showInfo(
+        "Monero is watched by the local view-only wallet, not the address config.",
+      );
       return;
     }
     if (!address.trim()) {
@@ -250,7 +263,8 @@ const FinancePage: React.FC = () => {
       return;
     }
     try {
-      setWatcherConfig(await writeCryptoWatcherAddress(key, address.trim()));
+      await writeCryptoWatcherAddress(key, address.trim());
+      await loadWatchers();
       showSuccess(`${key.toUpperCase()} address added to the crypto watcher.`);
     } catch (error) {
       showError(
@@ -775,6 +789,22 @@ const FinancePage: React.FC = () => {
             </div>
           </section>
 
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {watcherState.xmrError
+                ? "Monero wallet RPC is offline; XMR watch status is unknown."
+                : "Watched sources are synced from the local crypto watchers."}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              leftIcon={<FiRefreshCw className="h-4 w-4" />}
+              onClick={() => void loadWatchers()}
+            >
+              Sync watchers
+            </Button>
+          </div>
+
           <section className="overflow-x-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-700/50">
@@ -795,10 +825,12 @@ const FinancePage: React.FC = () => {
                 {sources.map((source) => {
                   const chain = watcherChain(source.chain || source.name);
                   const watched =
-                    source.kind === "crypto" &&
-                    chain &&
-                    String(watcherConfig[chain] || "").toLowerCase() ===
-                      source.reference.trim().toLowerCase();
+                    source.kind === "crypto" && chain
+                      ? String(
+                          watcherState.addresses[chain] || "",
+                        ).toLowerCase() ===
+                        source.reference.trim().toLowerCase()
+                      : false;
                   return (
                     <tr key={source.id}>
                       <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
